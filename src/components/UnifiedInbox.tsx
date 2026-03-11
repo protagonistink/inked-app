@@ -16,9 +16,9 @@ const SOURCE_ICONS: Record<string, React.ElementType> = {
 };
 
 const SOURCE_COLORS: Record<string, string> = {
-  gmail: 'text-source-gmail',
-  asana: 'text-source-asana',
-  gcal: 'text-source-gcal',
+  gmail: 'text-text-muted',
+  asana: 'text-text-muted',
+  gcal: 'text-text-muted',
 };
 
 function summarizeSyncIssue(message: string) {

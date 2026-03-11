@@ -32,7 +32,7 @@ export type SourceView = 'cover' | 'asana' | 'gcal' | 'gmail';
 
 const INITIAL_GOALS: WeeklyGoal[] = [
   { id: 'goal-work', title: 'Client Story Work', color: 'bg-accent-warm' },
-  { id: 'goal-writing', title: 'Screenplay Pages', color: 'bg-accent-teal' },
+  { id: 'goal-writing', title: 'Screenplay Pages', color: 'bg-done' },
   { id: 'goal-life', title: 'Body and Admin', color: 'bg-done' },
 ];
 

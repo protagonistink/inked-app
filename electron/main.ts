@@ -30,7 +30,7 @@ function createWindow() {
     minWidth: 1200,
     minHeight: 700,
     titleBarStyle: 'hiddenInset',
-    backgroundColor: '#111214',
+    backgroundColor: '#0A0A0A',
     icon: APP_ICON_PATH,
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
@@ -135,7 +135,7 @@ function createPomodoroWindow() {
     skipTaskbar: true,
     hasShadow: true,
     show: false,
-    backgroundColor: '#111214',
+    backgroundColor: '#0A0A0A',
     icon: APP_ICON_PATH,
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),

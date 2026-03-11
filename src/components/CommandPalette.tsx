@@ -166,7 +166,7 @@ export function CommandPalette() {
                                     </div>
 
                                     {isActive && (
-                                        <CheckCircle2 className="w-4 h-4 text-accent-teal opacity-60" />
+                                        <CheckCircle2 className="w-4 h-4 text-done opacity-60" />
                                     )}
                                 </div>
                             );

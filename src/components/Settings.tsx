@@ -190,7 +190,7 @@ export function Settings({ onClose }: SettingsProps) {
               />
               <span className="text-[11px] text-text-muted">
                 Get your key at{' '}
-                <span className="text-accent-teal">console.anthropic.com</span>
+                <span className="text-accent-warm">console.anthropic.com</span>
               </span>
             </Field>
           </Section>

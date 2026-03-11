@@ -6,7 +6,7 @@ import type { PlannedTask } from '@/types';
 
 const GOAL_COLORS = [
   { label: 'Warm', value: 'bg-accent-warm' },
-  { label: 'Teal', value: 'bg-accent-teal' },
+  { label: 'Muted', value: 'bg-done' },
   { label: 'Green', value: 'bg-done' },
 ];
 

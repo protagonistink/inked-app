@@ -25,8 +25,8 @@ const TIME_KEYFRAMES: [number, TimeSlice][] = [
   [0.0,  { warmHue: 30,  coolHue: 210, warmX: 12, warmY: 8,  coolX: 88, coolY: 92, warmOpacity: 0.10, coolOpacity: 0.10 }],
   [0.25, { warmHue: 38,  coolHue: 200, warmX: 28, warmY: 6,  coolX: 75, coolY: 88, warmOpacity: 0.12, coolOpacity: 0.12 }],
   [0.5,  { warmHue: 42,  coolHue: 190, warmX: 46, warmY: 5,  coolX: 55, coolY: 85, warmOpacity: 0.14, coolOpacity: 0.10 }],
-  [0.75, { warmHue: 28,  coolHue: 220, warmX: 65, warmY: 8,  coolX: 40, coolY: 90, warmOpacity: 0.20, coolOpacity: 0.12 }],
-  [1.0,  { warmHue: 220, coolHue: 240, warmX: 85, warmY: 10, coolX: 30, coolY: 88, warmOpacity: 0.08, coolOpacity: 0.14 }],
+  [0.75, { warmHue: 28,  coolHue: 210, warmX: 65, warmY: 8,  coolX: 40, coolY: 90, warmOpacity: 0.20, coolOpacity: 0.12 }],
+  [1.0,  { warmHue: 220, coolHue: 210, warmX: 85, warmY: 10, coolX: 30, coolY: 88, warmOpacity: 0.08, coolOpacity: 0.14 }],
 ];
 
 // ── Theme opacity ceilings ─────────────────────────────────

@@ -376,7 +376,7 @@ export function MorningBriefing({ onClose }: { onClose: () => void }) {
                 </div>
                 <span className="flex-1 min-w-0 truncate">{chip.title}</span>
                 {chip.matchedTaskId ? (
-                  <span className="text-[9px] uppercase tracking-wider text-accent-teal font-medium shrink-0">
+                  <span className="text-[9px] uppercase tracking-wider text-accent-warm font-medium shrink-0">
                     matched
                   </span>
                 ) : (
