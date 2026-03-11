@@ -1,0 +1,23 @@
+appId: com.timefocus.app
+productName: TimeFocus
+directories:
+  buildResources: build
+  output: release
+files:
+  - dist
+  - dist-electron
+mac:
+  icon: build/icon.png
+  target:
+    - dmg
+    - zip
+  artifactName: "${productName}-${version}-${arch}.${ext}"
+  category: public.app-category.productivity
+dmg:
+  contents:
+    - x: 130
+      y: 220
+    - x: 410
+      y: 220
+      type: link
+      path: /Applications
