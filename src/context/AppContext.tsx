@@ -88,6 +88,9 @@ interface AppContextValue {
   updateTaskEstimate: (id: string, mins: number) => void;
   nestTask: (childId: string, parentId: string) => void;
   unnestTask: (childId: string) => void;
+  dayLocked: boolean;
+  lockDay: () => void;
+  unlockDay: () => void;
   resetDay: () => Promise<void>;
 }
 
@@ -109,6 +112,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [weeklyPlanningLastCompleted, setWeeklyPlanningLastCompleted] = useState<string | null>(null);
   const [isWeeklyPlanningOpen, setIsWeeklyPlanningOpen] = useState(false);
   const [workdayEnd, setWorkdayEndState] = useState<{ hour: number; min: number }>({ hour: 18, min: 0 });
+  const [dayLocked, setDayLocked] = useState(false);
   const [syncStatus, setSyncStatus] = useState<{ asana: string | null; gcal: string | null; loading: boolean }>({
     asana: null,
     gcal: null,
@@ -147,6 +151,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
 
     loadState();
+  }, []);
+
+  useEffect(() => {
+    void window.api.store.get('dayLocked').then((val) => {
+      if (val) setDayLocked(true);
+    });
   }, []);
 
   usePlannerPersistence({
@@ -238,6 +248,18 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const setWorkdayEnd = useCallback((hour: number, min: number) => {
     setWorkdayEndState({ hour, min });
+  }, []);
+
+  const lockDay = useCallback(() => {
+    setDayLocked(true);
+    void window.api.store.set('dayLocked', true);
+    void window.api.window.setFocusSize(true);
+  }, []);
+
+  const unlockDay = useCallback(() => {
+    setDayLocked(false);
+    void window.api.store.set('dayLocked', false);
+    void window.api.window.setFocusSize(false);
   }, []);
 
   const selectInboxItem = useCallback((id: string) => {
@@ -337,6 +359,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
     );
     setDailyPlan((prev) => ({ ...prev, committedTaskIds: [] }));
     setLastCommitTimestamp(0);
+    setDayLocked(false);
+    void window.api.store.set('dayLocked', false);
+    void window.api.window.setFocusSize(false);
   }, [scheduleBlocks, setDailyPlan, setLastCommitTimestamp, setPlannedTasks, setScheduleBlocks]);
 
   return (
@@ -399,6 +424,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
         updateTaskEstimate,
         nestTask,
         unnestTask,
+        dayLocked,
+        lockDay,
+        unlockDay,
         resetDay,
       }}
     >
