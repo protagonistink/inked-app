@@ -1,7 +1,7 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
-import { Plus, Command, Play, ArrowRight, X, ChevronDown, Check } from 'lucide-react';
-import { useDrag } from 'react-dnd';
-import { useDrop } from 'react-dnd';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Plus, Command, Play, ArrowRight, X, ChevronDown, ChevronRight, Check } from 'lucide-react';
+import { useDrag, useDrop } from 'react-dnd';
+import { useModifierKey } from '@/hooks/useModifierKey';
 import { getEmptyImage } from 'react-dnd-html5-backend';
 import { differenceInCalendarDays, parseISO } from 'date-fns';
 import { cn, formatRoundedHours, roundToQuarterHour } from '@/lib/utils';
@@ -11,7 +11,54 @@ import { DragTypes, type DragItem } from '@/hooks/useDragDrop';
 import { useSound } from '@/hooks/useSound';
 import type { PlannedTask, WeeklyGoal } from '@/types';
 
-function TaskCard({ task, index, actualMins = 0 }: { task: PlannedTask; index: number; actualMins?: number }) {
+function SubtaskRow({ task, unnestTask }: { task: PlannedTask; unnestTask: (id: string) => void }) {
+  const { toggleTask } = useApp();
+  return (
+    <div className="flex items-center gap-2 py-2 pl-7 border-b border-ink/5 last:border-0">
+      <button
+        onClick={(e) => { e.stopPropagation(); void toggleTask(task.id); }}
+        className="shrink-0"
+      >
+        {task.status === 'done' ? (
+          <div className="w-3.5 h-3.5 border border-text-muted/50 flex items-center justify-center">
+            <Check className="w-2 h-2 stroke-[2]" />
+          </div>
+        ) : (
+          <div className="w-3.5 h-3.5 border border-text-muted/40 hover:border-text-primary transition-colors" />
+        )}
+      </button>
+      <span className={cn(
+        'flex-1 font-display text-[14px] leading-snug',
+        task.status === 'done' ? 'text-text-muted line-through' : 'text-text-primary/80'
+      )}>
+        {task.title}
+      </span>
+      <button
+        onClick={(e) => { e.stopPropagation(); unnestTask(task.id); }}
+        className="p-1 text-text-muted/40 hover:text-text-muted transition-colors"
+        title="Detach subtask"
+      >
+        <X className="w-3 h-3" />
+      </button>
+    </div>
+  );
+}
+
+function TaskCard({
+  task,
+  index,
+  actualMins = 0,
+  subtasks = [],
+  nestTask,
+  unnestTask,
+}: {
+  task: PlannedTask;
+  index: number;
+  actualMins?: number;
+  subtasks?: PlannedTask[];
+  nestTask: (childId: string, parentId: string) => void;
+  unnestTask: (childId: string) => void;
+}) {
   const { isLight, isFocus, setMode } = useTheme();
   const { toggleTask, setActiveTask, moveForward, releaseTask, updateTaskEstimate } = useApp();
   const { play } = useSound();
@@ -93,119 +140,153 @@ function TaskCard({ task, index, actualMins = 0 }: { task: PlannedTask; index: n
     previewRef(getEmptyImage(), { captureDraggingState: true });
   }, [previewRef]);
 
+  const modifierHeld = useModifierKey();
+  const [expanded, setExpanded] = useState(false);
+  const [{ isNestOver, canNest }, nestDropRef] = useDrop<DragItem, void, { isNestOver: boolean; canNest: boolean }>({
+    accept: DragTypes.TASK,
+    canDrop: (item) => modifierHeld && item.id !== task.id && item.id !== task.parentId,
+    drop: (item) => { nestTask(item.id, task.id); },
+    collect: (monitor) => ({ isNestOver: monitor.isOver(), canNest: monitor.canDrop() }),
+  });
+
+  const combinedRef = useCallback((node: HTMLDivElement | null) => {
+    dragRef(node);
+    nestDropRef(node);
+  }, [dragRef, nestDropRef]);
+
   const staggerClass = index < 8 ? `stagger-${Math.min(index + 1, 6)}` : '';
 
   return (
     <div
-      ref={dragRef}
+      ref={combinedRef}
       data-task-id={task.id}
       className={cn(
-        'animate-fade-in group relative flex items-center gap-2.5 py-5 border-b border-ink/10 transition-all duration-300 cursor-grab active:cursor-grabbing',
+        'animate-fade-in group relative border-b border-ink/10 transition-all duration-300',
         task.active && 'border-accent-warm/20',
-        !task.active && 'hover:-translate-y-0.5',
         isDragging && 'opacity-20 scale-95 rotate-[1deg]',
+        isNestOver && canNest && 'ring-1 ring-accent-warm/40 ring-inset rounded-lg',
         staggerClass
       )}
     >
-      <button
-        onClick={(e) => {
-          e.stopPropagation();
-          toggleTask(task.id);
-          play('click');
-        }}
-        className="shrink-0"
-      >
-        {task.status === 'done' ? (
-          <div className={cn('w-4 h-4 border flex items-center justify-center animate-check-pop', isLight ? 'border-stone-300 bg-stone-200/20' : isFocus ? 'border-stone-700 bg-stone-700/20' : 'border-accent-warm bg-accent-warm/20')}>
-            <Check className="w-2.5 h-2.5 stroke-[2]" />
-          </div>
-        ) : (
-          <div className={cn('w-4 h-4 border transition-colors', task.active ? 'border-accent-warm bg-accent-warm/10 animate-breathe' : 'border-text-muted/40 group-hover:border-text-primary')} />
-        )}
-      </button>
-
-      <div className="flex-1 min-w-0">
+      <div className={cn('flex items-center gap-2.5 py-5 cursor-grab active:cursor-grabbing', !task.active && 'hover:-translate-y-0.5')}>
         <button
-          onClick={() => task.status !== 'done' && setActiveTask(task.id)}
-          className="text-left w-full"
+          onClick={(e) => {
+            e.stopPropagation();
+            void toggleTask(task.id);
+            play('click');
+          }}
+          className="shrink-0"
         >
-          <div className={cn('font-display text-[18px] leading-snug transition-colors line-clamp-2', task.status === 'done' ? 'text-text-muted line-through' : task.active ? 'text-text-emphasis font-semibold' : 'text-text-primary')}>
-            {task.title}
-          </div>
-          <div className="text-[9px] uppercase tracking-[0.18em] text-text-muted mt-1 flex items-center gap-2">
-            {estimateEditing ? (
-              <span
-                className="flex items-center gap-0.5"
-                onBlur={handleEstimateBlur}
-                onKeyDown={handleEstimateKeyDown}
-                tabIndex={-1}
-              >
-                <button
-                  onMouseDown={handleEstimateButtonMouseDown}
-                  onClick={handleEstimateDecrement}
-                  className="px-1 py-0.5 rounded hover:bg-bg-elevated hover:text-text-primary transition-colors leading-none"
-                  title="Decrease estimate"
-                >
-                  –
-                </button>
-                <span className="min-w-[28px] text-center text-text-primary font-mono">{plannedHours}</span>
-                <button
-                  onMouseDown={handleEstimateButtonMouseDown}
-                  onClick={handleEstimateIncrement}
-                  className="px-1 py-0.5 rounded hover:bg-bg-elevated hover:text-text-primary transition-colors leading-none"
-                  title="Increase estimate"
-                >
-                  +
-                </button>
-              </span>
-            ) : (
-              <span
-                onClick={handleEstimateClick}
-                className="cursor-pointer hover:text-text-primary transition-colors"
-                title="Click to edit estimate"
-              >
-                {plannedHours} planned
-              </span>
-            )}
-            {actualMins > 0 && <span>{actualHours} actual</span>}
-            {varianceLabel && <span>{varianceLabel}</span>}
-            {task.status === 'scheduled' && <span>blocked</span>}
-            {task.active && task.status !== 'done' && <span className="text-active">now</span>}
-          </div>
+          {task.status === 'done' ? (
+            <div className={cn('w-4 h-4 border flex items-center justify-center animate-check-pop', isLight ? 'border-stone-300 bg-stone-200/20' : isFocus ? 'border-stone-700 bg-stone-700/20' : 'border-accent-warm bg-accent-warm/20')}>
+              <Check className="w-2.5 h-2.5 stroke-[2]" />
+            </div>
+          ) : (
+            <div className={cn('w-4 h-4 border transition-colors', task.active ? 'border-accent-warm bg-accent-warm/10 animate-breathe' : 'border-text-muted/40 group-hover:border-text-primary')} />
+          )}
         </button>
-      </div>
 
-      <div className="flex items-center gap-1">
-        {task.status !== 'done' && (
+        <div className="flex-1 min-w-0">
           <button
-            onClick={handleStartFocus}
-            className={cn(
-              'p-1.5 rounded-full transition-all active:scale-90',
-              task.active
-                ? 'bg-accent-warm/20 text-accent-warm'
-                : 'bg-bg-elevated text-text-muted hover:text-accent-warm hover:bg-accent-warm/12'
-            )}
-            title="Start focus"
+            onClick={() => task.status !== 'done' && setActiveTask(task.id)}
+            className="text-left w-full"
           >
-            <Play className="w-3.5 h-3.5 fill-current" />
+            <div className={cn('font-display text-[18px] leading-snug transition-colors line-clamp-2', task.status === 'done' ? 'text-text-muted line-through' : task.active ? 'text-text-emphasis font-semibold' : 'text-text-primary')}>
+              {task.title}
+            </div>
+            <div className="text-[9px] uppercase tracking-[0.18em] text-text-muted mt-1 flex items-center gap-2">
+              {estimateEditing ? (
+                <span
+                  className="flex items-center gap-0.5"
+                  onBlur={handleEstimateBlur}
+                  onKeyDown={handleEstimateKeyDown}
+                  tabIndex={-1}
+                >
+                  <button
+                    onMouseDown={handleEstimateButtonMouseDown}
+                    onClick={handleEstimateDecrement}
+                    className="px-1 py-0.5 rounded hover:bg-bg-elevated hover:text-text-primary transition-colors leading-none"
+                    title="Decrease estimate"
+                  >
+                    –
+                  </button>
+                  <span className="min-w-[28px] text-center text-text-primary font-mono">{plannedHours}</span>
+                  <button
+                    onMouseDown={handleEstimateButtonMouseDown}
+                    onClick={handleEstimateIncrement}
+                    className="px-1 py-0.5 rounded hover:bg-bg-elevated hover:text-text-primary transition-colors leading-none"
+                    title="Increase estimate"
+                  >
+                    +
+                  </button>
+                </span>
+              ) : (
+                <span
+                  onClick={handleEstimateClick}
+                  className="cursor-pointer hover:text-text-primary transition-colors"
+                  title="Click to edit estimate"
+                >
+                  {plannedHours} planned
+                </span>
+              )}
+              {actualMins > 0 && <span>{actualHours} actual</span>}
+              {varianceLabel && <span>{varianceLabel}</span>}
+              {task.status === 'scheduled' && <span>blocked</span>}
+              {task.active && task.status !== 'done' && <span className="text-active">now</span>}
+            </div>
           </button>
-        )}
-        <button
-          onClick={() => moveForward(task.id)}
-          className="p-1.5 rounded-md text-text-muted hover:text-text-primary hover:bg-bg-elevated"
-          title="Carry forward"
-        >
-          <ArrowRight className="w-3.5 h-3.5" />
-        </button>
-        <button
-          onClick={() => releaseTask(task.id)}
-          className="p-1.5 rounded-md text-text-muted hover:text-text-primary hover:bg-bg-elevated"
-          title="Release"
-        >
-          <X className="w-3.5 h-3.5" />
-        </button>
+        </div>
+
+        <div className="flex items-center gap-1">
+          {task.status !== 'done' && (
+            <button
+              onClick={handleStartFocus}
+              className={cn(
+                'p-1.5 rounded-full transition-all active:scale-90',
+                task.active
+                  ? 'bg-accent-warm/20 text-accent-warm'
+                  : 'bg-bg-elevated text-text-muted hover:text-accent-warm hover:bg-accent-warm/12'
+              )}
+              title="Start focus"
+            >
+              <Play className="w-3.5 h-3.5 fill-current" />
+            </button>
+          )}
+          <button
+            onClick={() => { void moveForward(task.id); }}
+            className="p-1.5 rounded-md text-text-muted hover:text-text-primary hover:bg-bg-elevated"
+            title="Carry forward"
+          >
+            <ArrowRight className="w-3.5 h-3.5" />
+          </button>
+          <button
+            onClick={() => { void releaseTask(task.id); }}
+            className="p-1.5 rounded-md text-text-muted hover:text-text-primary hover:bg-bg-elevated"
+            title="Release"
+          >
+            <X className="w-3.5 h-3.5" />
+          </button>
+        </div>
       </div>
 
+      {subtasks.length > 0 && (
+        <button
+          onClick={(e) => { e.stopPropagation(); setExpanded((prev) => !prev); }}
+          className="flex items-center gap-1.5 px-3 pb-3 text-[11px] text-text-muted hover:text-text-primary transition-colors"
+        >
+          {expanded ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />}
+          <span>{subtasks.length} task{subtasks.length !== 1 ? 's' : ''}</span>
+        </button>
+      )}
+      {expanded && subtasks.map((sub) => (
+        <SubtaskRow key={sub.id} task={sub} unnestTask={unnestTask} />
+      ))}
+
+      {isNestOver && canNest && (
+        <div className="absolute inset-0 rounded-lg flex items-center justify-center pointer-events-none bg-accent-warm/5">
+          <span className="text-[11px] text-accent-warm/80 uppercase tracking-wider">Nest here</span>
+        </div>
+      )}
     </div>
   );
 }
@@ -215,14 +296,31 @@ function GoalSection({
   tasks,
   startIndex,
   actualByTask,
+  allDaySubtasks,
+  nestTask,
+  unnestTask,
 }: {
   goal: WeeklyGoal;
   tasks: PlannedTask[];
   startIndex: number;
   actualByTask: Map<string, number>;
+  allDaySubtasks: PlannedTask[];
+  nestTask: (childId: string, parentId: string) => void;
+  unnestTask: (childId: string) => void;
 }) {
   const { bringForward, unscheduleTaskBlock } = useApp();
   const finishedCount = tasks.filter((task) => task.status === 'done').length;
+
+  const subtasksByParent = useMemo(() => {
+    const map = new Map<string, PlannedTask[]>();
+    for (const sub of allDaySubtasks) {
+      if (!sub.parentId) continue;
+      const existing = map.get(sub.parentId) ?? [];
+      map.set(sub.parentId, [...existing, sub]);
+    }
+    return map;
+  }, [allDaySubtasks]);
+
   const [{ isOver }, dropRef] = useDrop<DragItem, void, { isOver: boolean }>({
     accept: [DragTypes.TASK, DragTypes.BLOCK],
     collect: (monitor) => ({ isOver: monitor.isOver({ shallow: true }) }),
@@ -258,7 +356,15 @@ function GoalSection({
           </div>
         ) : (
           tasks.map((task, i) => (
-            <TaskCard key={task.id} task={task} index={startIndex + i} actualMins={actualByTask.get(task.id) || 0} />
+            <TaskCard
+              key={task.id}
+              task={task}
+              index={startIndex + i}
+              actualMins={actualByTask.get(task.id) ?? 0}
+              subtasks={subtasksByParent.get(task.id) ?? []}
+              nestTask={nestTask}
+              unnestTask={unnestTask}
+            />
           ))
         )}
       </div>
@@ -284,6 +390,8 @@ export function TodaysFlow({ onCollapse }: { onCollapse?: () => void }) {
     bringForward,
     unscheduleTaskBlock,
     resetDay,
+    nestTask,
+    unnestTask,
   } = useApp();
   const [inputValue, setInputValue] = useState('');
   const [confirmReset, setConfirmReset] = useState(false);
@@ -312,10 +420,19 @@ export function TodaysFlow({ onCollapse }: { onCollapse?: () => void }) {
     return totals;
   }, [timeLogs]);
 
+  const allCommittedSubtasks = useMemo(() =>
+    plannedTasks.filter((task) =>
+      task.parentId &&
+      dailyPlan.committedTaskIds.includes(task.id) &&
+      dailyPlan.committedTaskIds.includes(task.parentId)
+    ),
+    [dailyPlan.committedTaskIds, plannedTasks]
+  );
+
   const grouped = useMemo(() => weeklyGoals.map((goal) => ({
     goal,
-    tasks: committedTasks.filter((task) => task.weeklyGoalId === goal.id),
-  })), [committedTasks, weeklyGoals]);
+    tasks: dayTasks.filter((task) => task.weeklyGoalId === goal.id),
+  })), [dayTasks, weeklyGoals]);
 
   const realismWarning = useMemo(() => {
     if (dayTasks.length === 0) return null;
@@ -406,12 +523,11 @@ export function TodaysFlow({ onCollapse }: { onCollapse?: () => void }) {
   let runningIndex = 0;
 
   return (
-    <div ref={dropRef} className={cn('focus-dim-soft editorial-panel flex-1 min-w-[360px] column-divider glass paper-texture flex flex-col h-full transition-colors duration-700', isOver && 'bg-accent-warm/[0.03]')}>
+    <div ref={dropRef} className={cn('focus-dim-soft bg-bg flex-1 min-w-[360px] column-divider flex flex-col h-full transition-colors duration-700', isOver && 'bg-accent-warm/[0.03]')}>
       <div className="workspace-header px-8 shrink-0">
         <div className="workspace-header-copy">
-          <div className="workspace-header-kicker">Commit Ledger</div>
           <h2 className="workspace-header-title workspace-header-title-editorial text-text-emphasis transition-all duration-700">
-            Today&apos;s Commit
+            Today&apos;s Plan
           </h2>
           <div className="workspace-header-subline">
             {currentBlock ? `Now: ${currentBlock.title}` : nextBlock ? `Next: ${nextBlock.title}` : 'What belongs today, and when.'}
@@ -424,7 +540,7 @@ export function TodaysFlow({ onCollapse }: { onCollapse?: () => void }) {
           <span className={cn(isFocus && 'focus-fade-meta')}>
             {unscheduledCount} left
           </span>
-          {committedTasks.length > 0 && !isFocus && (
+          {dayTasks.length > 0 && !isFocus && (
             confirmReset ? (
               <span className="flex items-center gap-1.5">
                 <button
@@ -453,11 +569,11 @@ export function TodaysFlow({ onCollapse }: { onCollapse?: () => void }) {
         </div>
       </div>
 
-      {committedTasks.length > 0 && onCollapse && (
+      {dayTasks.length > 0 && onCollapse && (
         <div className="px-6 pb-3 shrink-0">
           <button
             onClick={() => { onCollapse(); play('paper'); }}
-            className="w-full flex items-center justify-between px-6 py-3 bg-accent-warm/[0.12] hover:bg-accent-warm/20 text-accent-warm transition-all duration-200 group"
+            className="w-full flex items-center justify-between px-6 py-3 bg-[#E55547]/10 hover:bg-[#E55547] text-[#E55547] hover:text-[#FAFAFA] transition-all duration-300 group"
           >
             <span className="text-[11px] uppercase tracking-[0.18em] font-medium">Lock in the day</span>
             <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-0.5 transition-transform duration-150" />
@@ -552,7 +668,18 @@ export function TodaysFlow({ onCollapse }: { onCollapse?: () => void }) {
           {grouped.map(({ goal, tasks }) => {
             const startIndex = runningIndex;
             runningIndex += tasks.length;
-            return <GoalSection key={goal.id} goal={goal} tasks={tasks} startIndex={startIndex} actualByTask={actualByTask} />;
+            return (
+              <GoalSection
+                key={goal.id}
+                goal={goal}
+                tasks={tasks}
+                startIndex={startIndex}
+                actualByTask={actualByTask}
+                allDaySubtasks={allCommittedSubtasks}
+                nestTask={nestTask}
+                unnestTask={unnestTask}
+              />
+            );
           })}
         </div>
       </div>
