@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
+import { endOfWeek, format, startOfWeek } from 'date-fns';
 import { Plus, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useApp } from '@/context/AppContext';
@@ -431,8 +432,12 @@ function StepLockedIn({ carriedForwardCount }: { carriedForwardCount: number }) 
   const { weeklyGoals, rituals, workdayEnd, monthlyPlan } = useApp();
 
   const totalRitualMins = rituals.reduce((sum, r) => sum + (r.estimateMins ?? 0), 0);
-  const workdayMins = (workdayEnd.hour * 60 + workdayEnd.min) - WORKDAY_START_MINS;
+  const workdayMins = workdayEnd.hour * 60 + workdayEnd.min - WORKDAY_START_MINS;
   const focusedMins = Math.max(0, workdayMins - totalRitualMins);
+
+  const weekStart = startOfWeek(new Date(), { weekStartsOn: 1 });
+  const weekEnd = endOfWeek(new Date(), { weekStartsOn: 1 });
+  const weekRange = `${format(weekStart, 'MMMM d')} – ${format(weekEnd, 'd')}`;
 
   return (
     <div className="flex flex-col gap-8">
@@ -440,6 +445,9 @@ function StepLockedIn({ carriedForwardCount }: { carriedForwardCount: number }) 
         <h2 className="font-display italic text-[28px] font-light tracking-wide text-text-primary">
           Your week is set.
         </h2>
+        <p className="text-[13px] text-text-muted mt-1 font-mono uppercase tracking-widest">
+          {weekRange}
+        </p>
       </div>
 
       {monthlyPlan?.oneThing && (
@@ -457,8 +465,14 @@ function StepLockedIn({ carriedForwardCount }: { carriedForwardCount: number }) 
         <div className="text-[11px] font-mono uppercase tracking-widest text-text-muted">
           This Week
         </div>
-        {weeklyGoals.map((goal) => (
-          <div key={goal.id} className="rounded-lg border border-border bg-bg-card p-5">
+        {weeklyGoals.map((goal, index) => (
+          <motion.div
+            key={goal.id}
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.25, delay: index * 0.08, ease: 'easeOut' }}
+            className="rounded-lg border border-border bg-bg-card p-5"
+          >
             <div className="flex items-center gap-3 mb-2">
               <div className={cn('w-2.5 h-2.5 rounded-full shrink-0', goal.color)} />
               <h3 className="text-[15px] font-medium text-text-primary">{goal.title}</h3>
@@ -468,32 +482,32 @@ function StepLockedIn({ carriedForwardCount }: { carriedForwardCount: number }) 
                 "{goal.why}"
               </p>
             )}
-          </div>
+          </motion.div>
         ))}
-
-        {(totalRitualMins > 0 || carriedForwardCount > 0) && (
-          <div className="flex flex-col gap-1 mt-2">
-            {carriedForwardCount > 0 && (
-              <div className="flex items-center justify-between text-[11px]">
-                <span className="font-mono uppercase tracking-widest text-text-muted">Carried Forward</span>
-                <span className="text-[13px] text-text-primary">{carriedForwardCount} {carriedForwardCount === 1 ? 'task' : 'tasks'}</span>
-              </div>
-            )}
-            {totalRitualMins > 0 && (
-              <>
-                <div className="flex items-center justify-between text-[11px]">
-                  <span className="font-mono uppercase tracking-widest text-text-muted">Ritual Load</span>
-                  <span className="text-text-muted">{formatMins(totalRitualMins)}/day</span>
-                </div>
-                <div className="flex items-center justify-between text-[11px]">
-                  <span className="font-mono uppercase tracking-widest text-text-muted">Focused Time</span>
-                  <span className="text-text-muted">~{formatMins(focusedMins)}/day</span>
-                </div>
-              </>
-            )}
-          </div>
-        )}
       </div>
+
+      {(totalRitualMins > 0 || carriedForwardCount > 0) && (
+        <div className="flex items-center gap-6 text-[12px] text-text-muted">
+          {carriedForwardCount > 0 && (
+            <span>
+              <span className="font-mono uppercase tracking-widest text-[10px]">Carried </span>
+              {carriedForwardCount} {carriedForwardCount === 1 ? 'task' : 'tasks'}
+            </span>
+          )}
+          {totalRitualMins > 0 && (
+            <>
+              <span>
+                <span className="font-mono uppercase tracking-widest text-[10px]">Rituals </span>
+                {formatMins(totalRitualMins)}/day
+              </span>
+              <span>
+                <span className="font-mono uppercase tracking-widest text-[10px]">Focus </span>
+                ~{formatMins(focusedMins)}/day
+              </span>
+            </>
+          )}
+        </div>
+      )}
 
       <p className="font-display italic text-[16px] text-text-muted text-center">
         Three things. Seven days. Make it count.
@@ -572,7 +586,14 @@ export function WeeklyPlanningWizard() {
       />
 
       {/* Card */}
-      <div className="relative z-10 w-full max-w-xl mx-6 bg-bg-elevated border border-border rounded-xl shadow-2xl flex flex-col max-h-[85vh]">
+      <motion.div
+        layout
+        className={cn(
+          'relative z-10 w-full mx-6 bg-bg-elevated border border-border rounded-xl shadow-2xl flex flex-col max-h-[85vh]',
+          step === 4 ? 'max-w-2xl' : 'max-w-xl'
+        )}
+        transition={{ layout: { duration: 0.3, ease: 'easeOut' } }}
+      >
         {/* Header */}
         <div className="flex items-center justify-between px-8 pt-7 pb-0 shrink-0">
           <StepIndicator step={step} total={TOTAL_STEPS} />
@@ -631,14 +652,23 @@ export function WeeklyPlanningWizard() {
             <div />
           )}
 
-          <button
-            onClick={handleNext}
-            className="px-5 py-2 rounded-md bg-bg-card border border-border text-[13px] font-medium text-text-primary hover:bg-bg hover:border-border-hover transition-colors"
-          >
-            {step === TOTAL_STEPS ? 'Begin the Week' : 'Next →'}
-          </button>
+          {step === TOTAL_STEPS ? (
+            <button
+              onClick={handleNext}
+              className="px-6 py-2.5 rounded-md bg-accent-warm text-bg text-[13px] font-medium hover:bg-accent-warm/90 transition-colors"
+            >
+              Begin the Week
+            </button>
+          ) : (
+            <button
+              onClick={handleNext}
+              className="px-5 py-2 rounded-md bg-bg-card border border-border text-[13px] font-medium text-text-primary hover:bg-bg hover:border-border-hover transition-colors"
+            >
+              Next →
+            </button>
+          )}
         </div>
-      </div>
+      </motion.div>
     </div>
   );
 }
