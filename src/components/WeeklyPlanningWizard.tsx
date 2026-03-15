@@ -316,6 +316,19 @@ function StepRituals() {
   const workdayMins = (workdayEnd.hour * 60 + workdayEnd.min) - WORKDAY_START_MINS;
   const focusedMins = Math.max(0, workdayMins - totalRitualMins);
 
+  function getStepMins(current: number): number {
+    if (current < 60) return 15;
+    if (current < 120) return 30;
+    return 60;
+  }
+
+  function formatWorkdayEnd(hour: number, min: number): string {
+    const suffix = hour >= 12 ? 'PM' : 'AM';
+    const h = hour > 12 ? hour - 12 : hour === 0 ? 12 : hour;
+    const m = min.toString().padStart(2, '0');
+    return `${h}:${m} ${suffix}`;
+  }
+
   function handleAddRitual(e: React.FormEvent) {
     e.preventDefault();
     if (ritualDraft.trim()) {
@@ -340,15 +353,34 @@ function StepRituals() {
         {rituals.map((ritual) => (
           <div key={ritual.id} className="flex items-center gap-3 rounded-md border border-border bg-bg-card px-4 py-2.5">
             <span className="flex-1 text-[13px] text-text-primary">{ritual.title}</span>
-            <input
-              type="number"
-              min={0}
-              step={15}
-              value={ritual.estimateMins ?? 0}
-              onChange={(e) => updateRitualEstimate(ritual.id, parseInt(e.target.value) || 0)}
-              className="w-14 bg-transparent border-b border-border-subtle text-[12px] font-mono text-text-muted text-right outline-none"
-            />
-            <span className="text-[11px] text-text-muted">min</span>
+            <div className="flex items-center gap-1.5">
+              <button
+                onClick={() => {
+                  const current = ritual.estimateMins ?? 0;
+                  const stepSize = getStepMins(current);
+                  updateRitualEstimate(ritual.id, Math.max(0, current - stepSize));
+                }}
+                disabled={(ritual.estimateMins ?? 0) === 0}
+                className="w-5 h-5 flex items-center justify-center rounded text-text-muted hover:text-text-primary hover:bg-bg transition-colors disabled:opacity-30 text-[14px] leading-none"
+                aria-label="Decrease"
+              >
+                −
+              </button>
+              <span className="text-[12px] font-mono text-text-muted w-10 text-center">
+                {formatMins(ritual.estimateMins ?? 0)}
+              </span>
+              <button
+                onClick={() => {
+                  const current = ritual.estimateMins ?? 0;
+                  const stepSize = getStepMins(current);
+                  updateRitualEstimate(ritual.id, current + stepSize);
+                }}
+                className="w-5 h-5 flex items-center justify-center rounded text-text-muted hover:text-text-primary hover:bg-bg transition-colors text-[14px] leading-none"
+                aria-label="Increase"
+              >
+                +
+              </button>
+            </div>
             <button
               onClick={() => removeRitual(ritual.id)}
               className="text-text-muted hover:text-text-primary transition-colors p-1"
@@ -371,6 +403,10 @@ function StepRituals() {
           className="flex-1 bg-transparent text-[13px] text-text-primary placeholder:text-text-muted outline-none"
         />
       </form>
+
+      <div className="text-[12px] text-text-muted">
+        Workday ends at {formatWorkdayEnd(workdayEnd.hour, workdayEnd.min)}
+      </div>
 
       {/* Capacity summary */}
       {rituals.length > 0 && (
