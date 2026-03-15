@@ -267,7 +267,7 @@ function IntentionCard({
 }
 
 function StepGoals({ monthlyPlan }: { monthlyPlan: MonthlyPlan | null }) {
-  const { weeklyGoals, addWeeklyGoal, renameWeeklyGoal, updateGoalWhy, updateGoalColor, updateGoalCountdown, countdowns } = useApp();
+  const { weeklyGoals, addWeeklyGoal, renameWeeklyGoal, updateGoalWhy, updateGoalColor, updateGoalCountdown, countdowns, openMonthlyPlanning } = useApp();
 
   const slots = [0, 1, 2];
 
@@ -282,9 +282,19 @@ function StepGoals({ monthlyPlan }: { monthlyPlan: MonthlyPlan | null }) {
         </p>
       </div>
 
-      {monthlyPlan?.oneThing && (
+      {monthlyPlan?.oneThing ? (
         <p className="font-display italic text-[14px] text-text-muted leading-relaxed">
           {new Date().toLocaleDateString('en-US', { month: 'long' })}: {monthlyPlan.oneThing}
+        </p>
+      ) : (
+        <p className="text-[13px] text-text-muted">
+          No monthly aim set.{' '}
+          <button
+            onClick={openMonthlyPlanning}
+            className="text-accent-warm hover:text-accent-warm/80 transition-colors underline-offset-2 hover:underline"
+          >
+            Set one first →
+          </button>
         </p>
       )}
 
