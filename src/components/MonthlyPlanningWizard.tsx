@@ -175,15 +175,24 @@ export function MonthlyPlanningWizard() {
                         placeholder="Write freely…"
                         className="mt-6 w-full bg-transparent border-b border-border-subtle outline-none resize-none text-[14px] text-text-primary placeholder:text-text-muted py-3 leading-relaxed"
                       />
-                      {oneThing.trim().length > 0 && (
-                        <div className="mt-6 rounded-lg bg-bg-card border-l-2 border-accent-warm px-4 py-3">
-                          <div className="text-[11px] font-mono uppercase tracking-widest text-text-muted mb-1">
-                            {new Date().toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}
+                      {oneThing.trim().length > 0 && why.trim().length > 0 && (
+                        <motion.div
+                          initial={{ opacity: 0, y: 8 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          transition={{ duration: 0.3, ease: 'easeOut' }}
+                          className="mt-8 flex flex-col items-center gap-3"
+                        >
+                          <div className="w-full border-t border-border-subtle" />
+                          <div className="py-4 flex flex-col items-center gap-2 text-center">
+                            <div className="font-display italic text-[22px] font-light text-text-primary leading-snug max-w-sm">
+                              {oneThing}
+                            </div>
+                            <div className="text-[13px] text-text-muted italic max-w-xs leading-relaxed">
+                              {why}
+                            </div>
                           </div>
-                          <div className="font-display italic text-[15px] text-text-primary leading-snug">
-                            {oneThing}
-                          </div>
-                        </div>
+                          <div className="w-full border-b border-border-subtle" />
+                        </motion.div>
                       )}
                     </>
                   )}
