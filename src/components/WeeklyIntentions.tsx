@@ -244,7 +244,7 @@ function IntentionCard({
 }
 
 export function WeeklyIntentions() {
-  const { weeklyGoals, plannedTasks, addWeeklyGoal } = useApp();
+  const { weeklyGoals, plannedTasks, addWeeklyGoal, monthlyPlan, openMonthlyPlanning } = useApp();
 
   const groupedGoals = useMemo(
     () => weeklyGoals.map((goal) => ({
@@ -277,6 +277,37 @@ export function WeeklyIntentions() {
 
       <div className="flex-1 overflow-y-auto px-8 py-8 flex flex-col gap-8 hide-scrollbar">
         <WeekOverview />
+
+        {monthlyPlan ? (
+          <div className="border-b border-border-subtle pb-5 mb-2 flex items-start justify-between gap-4">
+            <div>
+              <div className="font-mono text-[11px] uppercase tracking-[0.2em] text-text-muted">
+                {new Date().toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}
+              </div>
+              <p className="mt-1 font-display italic text-[18px] font-light text-text-primary leading-snug">
+                {monthlyPlan.oneThing}
+              </p>
+            </div>
+            <button
+              onClick={openMonthlyPlanning}
+              className="shrink-0 text-[12px] text-text-muted hover:text-text-primary transition-colors mt-0.5"
+            >
+              Edit
+            </button>
+          </div>
+        ) : (
+          <div className="border-b border-border-subtle pb-5 mb-2 flex items-baseline justify-between gap-4">
+            <div className="font-mono text-[11px] uppercase tracking-[0.2em] text-text-muted">
+              {new Date().toLocaleDateString('en-US', { month: 'long', year: 'numeric' })} hasn't been planned
+            </div>
+            <button
+              onClick={openMonthlyPlanning}
+              className="shrink-0 text-[12px] text-accent-warm hover:text-accent-warm/80 transition-colors"
+            >
+              Plan now
+            </button>
+          </div>
+        )}
 
         <section className="editorial-card rounded-[24px] px-7 py-6">
           <div className="flex items-center justify-between gap-4">
