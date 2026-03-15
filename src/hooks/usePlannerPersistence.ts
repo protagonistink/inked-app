@@ -3,6 +3,7 @@ import type {
   Countdown,
   DailyPlan,
   DailyRitual,
+  MonthlyPlan,
   PlannedTask,
   TimeLogEntry,
   WeeklyGoal,
@@ -22,6 +23,7 @@ export interface StoredPlannerState {
   countdowns?: Countdown[];
   weeklyPlanningLastCompleted?: string | null;
   workdayEnd?: { hour: number; min: number };
+  monthlyPlan?: MonthlyPlan | null;
 }
 
 interface PersistenceOptions {

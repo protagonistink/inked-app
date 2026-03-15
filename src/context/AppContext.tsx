@@ -11,6 +11,7 @@ import type {
   DailyPlan,
   DailyRitual,
   InboxItem,
+  MonthlyPlan,
   PlannedTask,
   ScheduleBlock,
   TimeLogEntry,
@@ -93,6 +94,14 @@ interface AppContextValue {
   lockDay: () => void;
   unlockDay: () => void;
   resetDay: () => Promise<void>;
+  monthlyPlan: MonthlyPlan | null;
+  monthlyPlanPrompt: boolean;
+  isMonthlyPlanningOpen: boolean;
+  setMonthlyPlan: (plan: MonthlyPlan) => void;
+  dismissMonthlyPlanPrompt: () => void;
+  openMonthlyPlanning: () => void;
+  closeMonthlyPlanning: () => void;
+  updateRitualEstimate: (id: string, mins: number) => void;
 }
 
 const AppContext = createContext<AppContextValue>(null!);
@@ -114,6 +123,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [isWeeklyPlanningOpen, setIsWeeklyPlanningOpen] = useState(false);
   const [workdayEnd, setWorkdayEndState] = useState<{ hour: number; min: number }>({ hour: 18, min: 0 });
   const [dayLocked, setDayLocked] = useState(false);
+  const [monthlyPlan, setMonthlyPlanState] = useState<MonthlyPlan | null>(null);
+  const [monthlyPlanPrompt, setMonthlyPlanPrompt] = useState(false);
+  const [isMonthlyPlanningOpen, setIsMonthlyPlanningOpen] = useState(false);
   const [syncStatus, setSyncStatus] = useState<{ asana: string | null; gcal: string | null; loading: boolean }>({
     asana: null,
     gcal: null,
@@ -144,6 +156,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         if (stored?.countdowns?.length) setCountdowns(stored.countdowns);
         if (stored?.weeklyPlanningLastCompleted !== undefined) setWeeklyPlanningLastCompleted(stored.weeklyPlanningLastCompleted ?? null);
         if (stored?.workdayEnd) setWorkdayEndState(stored.workdayEnd);
+        if (stored?.monthlyPlan !== undefined) setMonthlyPlanState(stored.monthlyPlan ?? null);
       } catch (error) {
         console.error('Failed to load planner state:', error);
       } finally {
@@ -160,6 +173,19 @@ export function AppProvider({ children }: { children: ReactNode }) {
     });
   }, []);
 
+  useEffect(() => {
+    if (!isInitialized) return;
+    const currentMonth = new Date().toISOString().slice(0, 7); // "2026-03"
+    if (!monthlyPlan || monthlyPlan.month !== currentMonth) {
+      void window.api.store.get('monthlyPlanDismissedDate').then((dismissed) => {
+        const today = new Date().toISOString().split('T')[0];
+        if (dismissed !== today) {
+          setMonthlyPlanPrompt(true);
+        }
+      });
+    }
+  }, [isInitialized, monthlyPlan]);
+
   usePlannerPersistence({
     isInitialized,
     state: {
@@ -173,6 +199,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       countdowns,
       weeklyPlanningLastCompleted,
       workdayEnd,
+      monthlyPlan,
     },
   });
 
@@ -234,6 +261,28 @@ export function AppProvider({ children }: { children: ReactNode }) {
       };
     }));
   }, []);
+
+  const setMonthlyPlan = useCallback((plan: MonthlyPlan) => {
+    const planWithTimestamp: MonthlyPlan = { ...plan, completedAt: new Date().toISOString() };
+    setMonthlyPlanState(planWithTimestamp);
+    setMonthlyPlanPrompt(false);
+    setIsMonthlyPlanningOpen(false);
+  }, []);
+
+  const dismissMonthlyPlanPrompt = useCallback(() => {
+    const today = new Date().toISOString().split('T')[0];
+    void window.api.store.set('monthlyPlanDismissedDate', today);
+    setMonthlyPlanPrompt(false);
+  }, []);
+
+  const openMonthlyPlanning = useCallback(() => setIsMonthlyPlanningOpen(true), []);
+  const closeMonthlyPlanning = useCallback(() => setIsMonthlyPlanningOpen(false), []);
+
+  const updateRitualEstimate = useCallback((id: string, mins: number) => {
+    setRituals((prev) =>
+      prev.map((r) => (r.id === id ? { ...r, estimateMins: mins } : r))
+    );
+  }, [setRituals]);
 
   const addCountdown = useCallback((title: string, dueDate: string) => {
     if (!title.trim() || !dueDate) return;
@@ -434,6 +483,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
         lockDay,
         unlockDay,
         resetDay,
+        monthlyPlan,
+        monthlyPlanPrompt,
+        isMonthlyPlanningOpen,
+        setMonthlyPlan,
+        dismissMonthlyPlanPrompt,
+        openMonthlyPlanning,
+        closeMonthlyPlanning,
+        updateRitualEstimate,
       }}
     >
       {children}
