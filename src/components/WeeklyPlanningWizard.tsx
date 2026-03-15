@@ -404,10 +404,6 @@ function StepRituals() {
         />
       </form>
 
-      <div className="text-[12px] text-text-muted">
-        Workday ends at {formatWorkdayEnd(workdayEnd.hour, workdayEnd.min)}
-      </div>
-
       {/* Capacity summary */}
       {rituals.length > 0 && (
         <div className="rounded-lg border border-border bg-bg-card px-4 py-4 flex flex-col gap-1">
@@ -419,6 +415,9 @@ function StepRituals() {
           </div>
           <div className={`text-[13px] ${focusedMins < 180 ? 'text-accent-warm' : 'text-text-muted'}`}>
             ~{formatMins(focusedMins)} available for goal work
+          </div>
+          <div className="text-[12px] text-text-muted mt-1">
+            Workday ends at {formatWorkdayEnd(workdayEnd.hour, workdayEnd.min)}
           </div>
         </div>
       )}
