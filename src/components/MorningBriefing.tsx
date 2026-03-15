@@ -29,6 +29,7 @@ export function MorningBriefing({ onClose, onNewChat, mode = 'briefing' }: { onC
     workdayEnd,
     scheduleBlocks,
     plannedTasks,
+    monthlyPlan,
   } = useApp();
 
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -162,8 +163,10 @@ export function MorningBriefing({ onClose, onNewChat, mode = 'briefing' }: { onC
       countdowns,
       workdayEndHour: workdayEnd.hour,
       workdayEndMin: workdayEnd.min,
+      monthlyOneThing: monthlyPlan?.oneThing,
+      monthlyWhy: monthlyPlan?.why,
     };
-  }, [weeklyGoals, committedTasks, workdayEnd, scheduleBlocks]);
+  }, [weeklyGoals, committedTasks, workdayEnd, scheduleBlocks, monthlyPlan]);
 
   // Stream a message
   const streamMessage = useCallback(async (msgs: ChatMessage[]) => {

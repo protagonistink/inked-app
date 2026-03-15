@@ -52,6 +52,8 @@ interface BriefingContext {
   workdayEndHour: number;
   workdayEndMin: number;
   userPhysics?: UserPhysics;
+  monthlyOneThing?: string;
+  monthlyWhy?: string;
 }
 
 export function buildSystemPrompt(ctx: BriefingContext): string {
@@ -128,6 +130,10 @@ Patrick Kirkland — narrative strategist, screenwriter, and founder of Protagon
 - Common derailers: ${physics.commonDerailers.join(', ')}
 - Watch for: ${physics.warningSignals.join('; ')}`;
 
+  const monthlySection = ctx.monthlyOneThing
+    ? `### Monthly Focus\n${ctx.monthlyOneThing}${ctx.monthlyWhy ? `\nWhy: ${ctx.monthlyWhy}` : ''}`
+    : '';
+
   // Character and behavioral instructions belong in your Anthropic Console system prompt.
   // This function injects only the live dynamic context that changes per-session.
   // The Console prompt handles: role, tone, briefing format, response constraints, etc.
@@ -141,7 +147,7 @@ ${physicsSection}
 
 ## LIVE CONTEXT
 
-### Patrick's Weekly Goals
+${monthlySection ? monthlySection + '\n\n' : ''}### Patrick's Weekly Goals
 ${goalsList}
 
 ### Asana Task List

@@ -38,6 +38,8 @@ export interface BriefingContext {
   countdowns: Array<{ title: string; daysUntil: number }>;
   workdayEndHour: number;
   workdayEndMin: number;
+  monthlyOneThing?: string;
+  monthlyWhy?: string;
 }
 
 export interface UserPhysics {
