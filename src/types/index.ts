@@ -48,12 +48,14 @@ export interface WeeklyGoal {
   color: string;
   why?: string;
   countdownId?: string;
+  monthlyAimId?: string;
 }
 
 export interface DailyRitual {
   id: string;
   title: string;
   completedDates: string[];
+  estimateMins?: number;
 }
 
 export interface Countdown {
@@ -125,6 +127,14 @@ export interface InboxItem {
 export interface DailyPlan {
   date: string;
   committedTaskIds: string[];
+}
+
+export interface MonthlyPlan {
+  month: string;
+  reflection: string;
+  oneThing: string;
+  why: string;
+  completedAt?: string;
 }
 
 export interface TimeLogEntry {
