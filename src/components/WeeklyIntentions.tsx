@@ -279,32 +279,37 @@ export function WeeklyIntentions() {
         <WeekOverview />
 
         {monthlyPlan ? (
-          <div className="border-b border-border-subtle pb-5 mb-2 flex items-start justify-between gap-4">
+          <div className="editorial-card rounded-[24px] px-7 py-5 flex items-start justify-between gap-4">
             <div>
-              <div className="font-mono text-[11px] uppercase tracking-[0.2em] text-text-muted">
+              <div className="text-[11px] font-mono uppercase tracking-[0.2em] text-text-muted">
                 {new Date().toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}
               </div>
-              <p className="mt-1 font-display italic text-[18px] font-light text-text-primary leading-snug">
+              <p className="mt-2 font-display italic text-[20px] font-light text-text-primary leading-snug">
                 {monthlyPlan.oneThing}
               </p>
             </div>
             <button
               onClick={openMonthlyPlanning}
-              className="shrink-0 text-[12px] text-text-muted hover:text-text-primary transition-colors mt-0.5"
+              className="shrink-0 mt-1 px-3 py-1.5 rounded-md border border-border text-[12px] text-text-muted hover:text-text-primary hover:border-border-hover transition-colors"
             >
               Edit
             </button>
           </div>
         ) : (
-          <div className="border-b border-border-subtle pb-5 mb-2 flex items-baseline justify-between gap-4">
-            <div className="font-mono text-[11px] uppercase tracking-[0.2em] text-text-muted">
-              {new Date().toLocaleDateString('en-US', { month: 'long', year: 'numeric' })} hasn't been planned
+          <div className="editorial-card rounded-[24px] px-7 py-5 border-dashed flex items-center justify-between gap-4">
+            <div>
+              <div className="text-[11px] font-mono uppercase tracking-[0.2em] text-text-muted">
+                {new Date().toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}
+              </div>
+              <p className="mt-1 text-[14px] text-text-muted">
+                No monthly aim set yet.
+              </p>
             </div>
             <button
               onClick={openMonthlyPlanning}
-              className="shrink-0 text-[12px] text-accent-warm hover:text-accent-warm/80 transition-colors"
+              className="shrink-0 px-4 py-2 rounded-md bg-accent-warm text-bg text-[13px] font-medium hover:bg-accent-warm/90 transition-colors"
             >
-              Plan now
+              Set aim for {new Date().toLocaleDateString('en-US', { month: 'long' })} →
             </button>
           </div>
         )}
