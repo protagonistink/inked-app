@@ -437,7 +437,10 @@ function StepLockedIn({ carriedForwardCount }: { carriedForwardCount: number }) 
 
   const weekStart = startOfWeek(new Date(), { weekStartsOn: 1 });
   const weekEnd = endOfWeek(new Date(), { weekStartsOn: 1 });
-  const weekRange = `${format(weekStart, 'MMMM d')} – ${format(weekEnd, 'd')}`;
+  const weekRange =
+    weekStart.getMonth() === weekEnd.getMonth()
+      ? `${format(weekStart, 'MMMM d')} – ${format(weekEnd, 'd')}`
+      : `${format(weekStart, 'MMMM d')} – ${format(weekEnd, 'MMMM d')}`;
 
   return (
     <div className="flex flex-col gap-8">
