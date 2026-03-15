@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { X } from 'lucide-react';
 import { useApp } from '@/context/AppContext';
 import type { MonthlyPlan } from '@/types';
@@ -20,6 +20,14 @@ export function MonthlyPlanningWizard() {
   const [reflection, setReflection] = useState(monthlyPlan?.reflection ?? '');
   const [oneThing, setOneThing] = useState(monthlyPlan?.oneThing ?? '');
   const [why, setWhy] = useState(monthlyPlan?.why ?? '');
+
+  useEffect(() => {
+    if (!isMonthlyPlanningOpen) return;
+    setStep(1);
+    setReflection(monthlyPlan?.reflection ?? '');
+    setOneThing(monthlyPlan?.oneThing ?? '');
+    setWhy(monthlyPlan?.why ?? '');
+  }, [isMonthlyPlanningOpen, monthlyPlan]);
 
   const monthLabel = new Date()
     .toLocaleDateString('en-US', { month: 'long', year: 'numeric' })
