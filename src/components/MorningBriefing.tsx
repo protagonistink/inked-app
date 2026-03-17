@@ -1,17 +1,203 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, type ElementType } from 'react';
 import { format } from 'date-fns';
-import { ChevronsRight, RotateCcw, Send, Loader2, AlertCircle, Check } from 'lucide-react';
+import {
+  AlertCircle,
+  ArrowRight,
+  CalendarClock,
+  Check,
+  ChevronsRight,
+  Loader2,
+  MoonStar,
+  RotateCcw,
+  Send,
+  Sparkles,
+  SunMedium,
+  Sunset,
+} from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { cn } from '@/lib/utils';
 import { useApp } from '@/context/AppContext';
 import type { ChatMessage } from '@/types/electron';
 import { useBriefingStream } from '@/hooks/useBriefingStream';
+import { detectInkMode } from '@/lib/ink-mode';
 import { buildBriefingContext, parseCommitChips, type CommitChip } from './morningBriefingUtils';
 
-type Phase = 'idle' | 'briefing' | 'conversation' | 'committing';
+type Phase = 'idle' | 'journal' | 'briefing' | 'conversation' | 'committing';
+type InkMoment = 'morning' | 'midday' | 'evening';
 
-export function MorningBriefing({ onClose, onNewChat, mode = 'briefing' }: { onClose: () => void; onNewChat: () => void; mode?: 'briefing' | 'chat' }) {
+interface JournalQuestion {
+  key: string;
+  prompt: string;
+  subtext?: string;
+}
+
+function buildJournalQuestions(goals: Array<{ id: string; title: string }>): JournalQuestion[] {
+  const questions: JournalQuestion[] = [
+    { key: 'excites', prompt: 'What excites you today?', subtext: 'First thought. Don\u2019t filter it.' },
+  ];
+  goals.forEach((goal) => {
+    questions.push({
+      key: `mover:${goal.id}`,
+      prompt: `One thing that moves ${goal.title} forward.`,
+      subtext: 'The smallest real step.',
+    });
+  });
+  questions.push({
+    key: 'artistDate',
+    prompt: 'What\u2019s just for you today?',
+    subtext: 'Something that has nothing to do with the work.',
+  });
+  return questions;
+}
+
+interface StarterAction {
+  label: string;
+  prompt: string;
+  icon?: ElementType;
+  primary?: boolean;
+  variant?: 'warm' | 'neutral';
+}
+
+interface IntroState {
+  kicker: string;
+  headline: string;
+  subline: string;
+  inputPlaceholder: string;
+  icon: ElementType;
+  primaryActions: StarterAction[];
+  secondaryActions: StarterAction[];
+}
+
+function getInkMoment(date = new Date()): InkMoment {
+  const hour = date.getHours();
+  if (hour < 12) return 'morning';
+  if (hour < 18) return 'midday';
+  return 'evening';
+}
+
+function getIntroState(moment: InkMoment): IntroState {
+  if (moment === 'morning') {
+    return {
+      kicker: 'Morning briefing',
+      headline: "Here's what's happening today.",
+      subline: 'A clear read on the day before it starts filling up.',
+      inputPlaceholder: 'Ask about today, the calendar, or what actually matters...',
+      icon: SunMedium,
+      primaryActions: [
+        {
+          label: 'Start morning briefing',
+          prompt: 'Run my morning briefing.',
+          icon: ArrowRight,
+          primary: true,
+          variant: 'warm',
+        },
+      ],
+      secondaryActions: [
+        {
+          label: 'What actually matters today?',
+          prompt: 'Give me a sharp read on what actually matters today.',
+        },
+        {
+          label: 'Prep my first block',
+          prompt: 'Help me prep my first block and decide what it should be.',
+          icon: CalendarClock,
+        },
+        {
+          label: "What's already fixed on the calendar?",
+          prompt: "Walk me through what's already fixed on the calendar today.",
+        },
+        {
+          label: 'How does today support this week?',
+          prompt: 'How should today support my week, given the goals already in play?',
+        },
+      ],
+    };
+  }
+
+  if (moment === 'midday') {
+    return {
+      kicker: 'Midday reset',
+      headline: 'Do we need to move some things around?',
+      subline: "The day has changed. Let's make the schedule honest again.",
+      inputPlaceholder: 'Ask what should move, what is at risk, or how to rebalance the day...',
+      icon: Sparkles,
+      primaryActions: [
+        {
+          label: 'Review the rest of today',
+          prompt: 'Review the rest of today and tell me what needs to move.',
+          icon: ArrowRight,
+          primary: true,
+          variant: 'neutral',
+        },
+      ],
+      secondaryActions: [
+        {
+          label: 'What should move?',
+          prompt: "What should move on today's schedule right now?",
+        },
+        {
+          label: "What's at risk now?",
+          prompt: 'What is at risk if the rest of today stays the way it is?',
+        },
+        {
+          label: 'Find open time',
+          prompt: 'Find realistic open time in the rest of today.',
+          icon: CalendarClock,
+        },
+        {
+          label: 'Am I still on track this week?',
+          prompt: 'Am I still on track this week, or has today drifted?',
+        },
+      ],
+    };
+  }
+
+  return {
+    kicker: 'Evening plan',
+    headline: "What's the plan for tonight?",
+    subline: 'Choose whether to close the day cleanly or keep going on purpose.',
+    inputPlaceholder: 'Ask what still matters tonight, what can close, or what should move to tomorrow...',
+    icon: MoonStar,
+    primaryActions: [
+      {
+        label: 'Wrap up the day',
+        prompt: 'Help me wrap up the day cleanly and decide what closes now.',
+        icon: Sunset,
+        primary: true,
+        variant: 'neutral',
+      },
+      {
+        label: 'What still needs to get done?',
+        prompt: 'What still needs to get done tonight, realistically?',
+        icon: ArrowRight,
+        primary: true,
+        variant: 'warm',
+      },
+    ],
+    secondaryActions: [
+      {
+        label: 'What moves to tomorrow?',
+        prompt: 'What should move to tomorrow instead of staying alive tonight?',
+      },
+      {
+        label: 'What did today actually add up to?',
+        prompt: 'What did today actually add up to, and what did it miss?',
+      },
+      {
+        label: 'Set up tomorrow morning',
+        prompt: 'Set up tomorrow morning so I can start clean.',
+        icon: CalendarClock,
+      },
+      {
+        label: 'Am I still aligned with this week or month?',
+        prompt: 'Am I still aligned with the week or month, given what happened today?',
+      },
+    ],
+  };
+}
+
+export function MorningBriefing({ onClose, onNewChat, onStreamingChange, mode = 'briefing' }: { onClose: () => void; onNewChat: () => void; onStreamingChange?: (streaming: boolean) => void; mode?: 'briefing' | 'chat' }) {
   const {
     weeklyGoals,
     candidateItems,
@@ -31,10 +217,19 @@ export function MorningBriefing({ onClose, onNewChat, mode = 'briefing' }: { onC
   const [commitChips, setCommitChips] = useState<CommitChip[]>([]);
   const [committed, setCommitted] = useState(false);
 
+  // Journal state
+  const journalQuestions = buildJournalQuestions(weeklyGoals);
+  const [journalStep, setJournalStep] = useState(0);
+  const [journalAnswers, setJournalAnswers] = useState<Record<string, string>>({});
+  const [journalInput, setJournalInput] = useState('');
+
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const journalInputRef = useRef<HTMLTextAreaElement>(null);
   const hasStartedBriefingRef = useRef(false);
   const closeTimeoutRef = useRef<number | null>(null);
+  const inkMoment = getInkMoment();
+  const introState = getIntroState(inkMoment);
 
   useEffect(() => {
     return () => {
@@ -44,13 +239,15 @@ export function MorningBriefing({ onClose, onNewChat, mode = 'briefing' }: { onC
     };
   }, []);
 
+  const currentInkMode = detectInkMode();
   const buildContext = useCallback(() => buildBriefingContext({
     weeklyGoals,
     committedTasks,
     workdayEnd,
     scheduleBlocks,
     monthlyPlan,
-  }), [weeklyGoals, committedTasks, workdayEnd, scheduleBlocks, monthlyPlan]);
+    inkMode: currentInkMode,
+  }), [weeklyGoals, committedTasks, workdayEnd, scheduleBlocks, monthlyPlan, currentInkMode]);
 
   const {
     streamingContent,
@@ -63,35 +260,95 @@ export function MorningBriefing({ onClose, onNewChat, mode = 'briefing' }: { onC
       setMessages((prev) => [...prev, { role: 'assistant', content }]);
     },
   });
+  const showIntro = mode === 'chat' && messages.length === 0 && !streamingContent && !isStreaming && !error;
+
+  // Journal: advance to next question or save and transition
+  const advanceJournal = useCallback(() => {
+    const answer = journalInput.trim();
+    if (!answer) return;
+
+    const currentQ = journalQuestions[journalStep];
+    const nextAnswers = { ...journalAnswers, [currentQ.key]: answer };
+    setJournalAnswers(nextAnswers);
+    setJournalInput('');
+
+    if (journalStep < journalQuestions.length - 1) {
+      setJournalStep(journalStep + 1);
+    } else {
+      // All questions answered — save entry and transition to briefing
+      const needleMovers = weeklyGoals.map((goal) => ({
+        goalTitle: goal.title,
+        action: nextAnswers[`mover:${goal.id}`] || '',
+      }));
+
+      const entry = {
+        date: format(new Date(), 'yyyy-MM-dd'),
+        excites: nextAnswers['excites'] || '',
+        needleMovers,
+        artistDate: nextAnswers['artistDate'] || '',
+        createdAt: new Date().toISOString(),
+      };
+
+      void window.api.ink.appendJournal(entry);
+      setPhase('briefing');
+
+      // Auto-start briefing after journal completes
+      const initialMsg: ChatMessage = { role: 'user', content: 'Run my morning briefing.' };
+      setMessages([initialMsg]);
+      void streamMessage([initialMsg]);
+    }
+  }, [journalInput, journalQuestions, journalStep, journalAnswers, weeklyGoals, streamMessage]);
+
+  // Focus journal input when question changes
+  useEffect(() => {
+    if (phase === 'journal') {
+      journalInputRef.current?.focus();
+    }
+  }, [phase, journalStep]);
+
+  useEffect(() => {
+    onStreamingChange?.(isStreaming);
+  }, [isStreaming, onStreamingChange]);
 
   // Scroll to bottom on new messages
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, streamingContent]);
 
-  // Auto-fire briefing on mount (briefing mode only — chat mode starts idle)
+  // Auto-fire briefing on mount (briefing mode only - chat mode starts idle)
+  // Morning: journal beat first, then briefing. Other times: straight to briefing.
   useEffect(() => {
     if (mode !== 'briefing') return;
     if (hasStartedBriefingRef.current) return;
     hasStartedBriefingRef.current = true;
 
-    setPhase('briefing');
-    const initialMsg: ChatMessage = { role: 'user', content: 'Run my morning briefing.' };
-    setMessages([initialMsg]);
-    void streamMessage([initialMsg]);
-  }, [streamMessage, mode]);
+    if (inkMoment === 'morning' && weeklyGoals.length > 0) {
+      setPhase('journal');
+    } else {
+      setPhase('briefing');
+      const initialMsg: ChatMessage = { role: 'user', content: 'Run my morning briefing.' };
+      setMessages([initialMsg]);
+      void streamMessage([initialMsg]);
+    }
+  }, [streamMessage, mode, inkMoment, weeklyGoals.length]);
+
+  const startConversation = useCallback((prompt: string) => {
+    if (!prompt.trim() || isStreaming) return;
+    const nextPhase = prompt === 'Run my morning briefing.' ? 'briefing' : 'conversation';
+    const userMsg: ChatMessage = { role: 'user', content: prompt.trim() };
+    const newMessages = [...messages, userMsg];
+    setMessages(newMessages);
+    setPhase(nextPhase);
+    void streamMessage(newMessages);
+  }, [isStreaming, messages, streamMessage]);
 
   // Send a follow-up message
   const sendMessage = useCallback(() => {
     if (!inputValue.trim() || isStreaming) return;
-
-    const userMsg: ChatMessage = { role: 'user', content: inputValue.trim() };
-    const newMessages = [...messages, userMsg];
-    setMessages(newMessages);
+    const prompt = inputValue.trim();
     setInputValue('');
-    setPhase('conversation');
-    streamMessage(newMessages);
-  }, [inputValue, isStreaming, messages, streamMessage]);
+    startConversation(prompt);
+  }, [inputValue, isStreaming, startConversation]);
 
   // Parse tasks from the last assistant message for commit chips
   const parseTasksFromMessage = useCallback((content: string): CommitChip[] => {
@@ -147,10 +404,10 @@ export function MorningBriefing({ onClose, onNewChat, mode = 'briefing' }: { onC
   };
 
   return (
-    <div className="flex flex-col h-full w-full min-w-[280px] bg-bg-card/95 backdrop-blur-xl border-l border-border-subtle">
+    <div className="flex flex-col h-full w-full min-w-[280px] bg-bg-card border-l border-border-subtle">
       {/* Header */}
-      <div className="drag-region flex items-center justify-between px-5 pt-6 pb-4 border-b border-border-subtle">
-        <div>
+      <div className="drag-region flex items-center justify-between" style={{ background: 'transparent', borderBottom: '0.5px solid rgba(255,255,255,0.06)', padding: '32px 22px 20px' }}>
+        <div className="pr-4">
           <h2 className="font-display italic text-[17px] font-light text-text-emphasis">
             Ink
           </h2>
@@ -177,11 +434,101 @@ export function MorningBriefing({ onClose, onNewChat, mode = 'briefing' }: { onC
         </div>
       </div>
 
+      {/* Journal phase */}
+      {phase === 'journal' && journalQuestions[journalStep] && (
+        <div className="flex-1 overflow-y-auto px-6 pt-12 pb-6 flex flex-col hide-scrollbar">
+          {/* Progress dots */}
+          <div className="flex items-center gap-1.5 mb-8">
+            {journalQuestions.map((_, i) => (
+              <div
+                key={i}
+                className={cn(
+                  'h-1 rounded-full transition-all duration-300',
+                  i < journalStep ? 'w-6 bg-accent-warm/60' : i === journalStep ? 'w-6 bg-accent-warm' : 'w-1.5 bg-text-muted/20',
+                )}
+              />
+            ))}
+          </div>
+
+          {/* Answered questions (collapsed) */}
+          {Object.entries(journalAnswers).map(([key, answer]) => {
+            const q = journalQuestions.find((jq) => jq.key === key);
+            if (!q) return null;
+            return (
+              <div key={key} className="mb-4 pb-3 border-b border-border-subtle/40">
+                <div className="text-[10px] uppercase tracking-[0.14em] text-text-muted/60">{q.prompt}</div>
+                <div className="mt-1 text-[13px] text-text-primary/70">{answer}</div>
+              </div>
+            );
+          })}
+
+          {/* Current question */}
+          <div className="mt-auto">
+            <div className="text-[10px] uppercase tracking-[0.18em] text-accent-warm/80 mb-3">
+              Morning journal
+            </div>
+            <div className="font-display italic text-[24px] font-light text-text-emphasis leading-snug mb-2">
+              {journalQuestions[journalStep].prompt}
+            </div>
+            {journalQuestions[journalStep].subtext && (
+              <div className="text-[12px] text-text-muted/60 mb-6">
+                {journalQuestions[journalStep].subtext}
+              </div>
+            )}
+
+            <div className="flex items-end gap-3">
+              <textarea
+                ref={journalInputRef}
+                value={journalInput}
+                onChange={(e) => setJournalInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault();
+                    advanceJournal();
+                  }
+                }}
+                placeholder="Type your answer..."
+                rows={1}
+                className="min-h-[44px] flex-1 resize-none bg-bg-elevated/60 border border-border-subtle rounded-lg px-4 py-3 text-[14px] leading-relaxed text-text-primary placeholder:text-text-muted/50 focus:outline-none focus:border-accent-warm/40 transition-colors"
+              />
+              <button
+                onClick={advanceJournal}
+                disabled={!journalInput.trim()}
+                className={cn(
+                  'p-3 rounded-lg transition-all shrink-0',
+                  journalInput.trim()
+                    ? 'bg-accent-warm text-white hover:bg-accent-warm/90'
+                    : 'bg-bg-elevated text-text-muted cursor-not-allowed',
+                )}
+              >
+                <ArrowRight className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Messages */}
-      <div className="flex-1 overflow-y-auto px-4 pt-10 pb-4 flex flex-col gap-5 hide-scrollbar">
-        {mode === 'briefing' && (
-          <div className="font-display italic text-[20px] font-light text-text-emphasis leading-snug">
-            Good morning.
+      {phase !== 'journal' && (
+      <div className="flex-1 overflow-y-auto px-6 pt-12 pb-6 flex flex-col gap-6 hide-scrollbar">
+        {showIntro && (
+          <InkIntroPanel
+            state={introState}
+            mode={mode}
+            onAction={(prompt) => {
+              startConversation(prompt);
+            }}
+          />
+        )}
+
+        {mode === 'briefing' && phase === 'briefing' && (
+          <div className="max-w-[280px] border-b border-border-subtle/60 pb-5">
+            <div className="text-[10px] uppercase tracking-[0.18em] text-accent-warm/80">
+              Morning briefing
+            </div>
+            <div className="mt-3 font-display italic text-[24px] font-light text-text-emphasis leading-snug">
+              Good morning.
+            </div>
           </div>
         )}
         {messages.map((msg, i) => (
@@ -190,11 +537,11 @@ export function MorningBriefing({ onClose, onNewChat, mode = 'briefing' }: { onC
 
         {/* Streaming content */}
         {streamingContent && (
-          <div className="flex gap-3">
+          <div className="flex gap-4">
             <div className="w-5 h-5 mt-0.5 rounded-full bg-accent-warm/20 flex items-center justify-center shrink-0">
               <span className="text-[9px] font-bold text-accent-warm">TF</span>
             </div>
-            <div className="flex-1 min-w-0">
+            <div className="flex-1 min-w-0 pr-2">
               <div className="prose-briefing text-[15px] leading-relaxed text-text-primary">
                 <ReactMarkdown remarkPlugins={[remarkGfm]}>{streamingContent}</ReactMarkdown>
                 <span className="inline-block w-[2px] h-[14px] bg-accent-warm animate-pulse ml-0.5 align-text-bottom" />
@@ -273,10 +620,11 @@ export function MorningBriefing({ onClose, onNewChat, mode = 'briefing' }: { onC
 
         <div ref={messagesEndRef} />
       </div>
+      )}
 
       {/* Input area */}
-      {phase !== 'committing' && !committed && (
-        <div className="px-4 pb-4 pt-2 border-t border-border-subtle">
+      {phase !== 'journal' && phase !== 'committing' && !committed && (
+        <div className="px-6 pb-5 pt-3 border-t border-border-subtle">
           {/* Commit trigger */}
           {messages.length > 2 && !isStreaming && (
             <button
@@ -287,22 +635,22 @@ export function MorningBriefing({ onClose, onNewChat, mode = 'briefing' }: { onC
             </button>
           )}
 
-          <div className="flex items-end gap-2">
+          <div className="flex items-end gap-3">
             <textarea
               ref={inputRef}
               value={inputValue}
               onChange={(e) => setInputValue(e.target.value)}
               onKeyDown={handleKeyDown}
-              placeholder={isStreaming ? 'Thinking...' : 'Push back, add, cut, or re-scope...'}
+              placeholder={isStreaming ? 'Thinking...' : showIntro ? introState.inputPlaceholder : 'Push back, add, cut, or re-scope...'}
               rows={1}
               disabled={isStreaming}
-              className="flex-1 resize-none bg-bg-elevated/60 border border-border-subtle rounded-lg px-3 py-2 text-[14px] text-text-primary placeholder:text-text-muted/50 focus:outline-none focus:border-accent-warm/40 transition-colors disabled:opacity-50"
+              className="min-h-[44px] flex-1 resize-none bg-bg-elevated/60 border border-border-subtle rounded-lg px-4 py-3 text-[14px] leading-relaxed text-text-primary placeholder:text-text-muted/50 focus:outline-none focus:border-accent-warm/40 transition-colors disabled:opacity-50"
             />
             <button
               onClick={sendMessage}
               disabled={!inputValue.trim() || isStreaming}
               className={cn(
-                'p-2 rounded-lg transition-all shrink-0',
+                'p-3 rounded-lg transition-all shrink-0',
                 inputValue.trim() && !isStreaming
                   ? 'bg-accent-warm text-white hover:bg-accent-warm/90'
                   : 'bg-bg-elevated text-text-muted cursor-not-allowed'
@@ -321,6 +669,99 @@ export function MorningBriefing({ onClose, onNewChat, mode = 'briefing' }: { onC
   );
 }
 
+function InkIntroPanel({
+  state,
+  mode,
+  onAction,
+}: {
+  state: IntroState;
+  mode: 'briefing' | 'chat';
+  onAction: (prompt: string) => void;
+}) {
+  const Icon = state.icon;
+
+  return (
+    <div className="relative">
+      <div className="relative px-[22px] py-5">
+        <div className="relative flex flex-col gap-5">
+          <div className="flex items-start justify-between gap-4">
+            <div className="min-w-0">
+              <div className="text-[10px] uppercase tracking-[0.18em] text-text-muted/80">
+                {state.kicker}
+              </div>
+              <div className="mt-3 font-display text-[29px] leading-[0.98] text-text-emphasis">
+                {state.headline}
+              </div>
+              <div className="mt-3 max-w-[280px] text-[13px] leading-relaxed text-text-muted">
+                {state.subline}
+              </div>
+            </div>
+            <Icon className="h-5 w-5 shrink-0" style={{ color: 'rgba(160,150,130,0.4)' }} />
+          </div>
+
+          <div className="flex flex-col">
+            {state.primaryActions.map((action) => {
+              const ActionIcon = action.icon ?? ArrowRight;
+              return (
+                <button
+                  key={action.label}
+                  onClick={() => onAction(action.prompt)}
+                  className="group flex w-full items-center justify-between text-left transition-all"
+                  style={{
+                    background: 'transparent',
+                    border: 'none',
+                    borderBottom: '0.5px solid rgba(255,255,255,0.04)',
+                    padding: '12px 0 14px',
+                  }}
+                >
+                  <div>
+                    <div
+                      className="text-[11px] font-medium"
+                      style={{ color: action.variant === 'warm' ? 'rgba(190,90,55,0.9)' : 'rgba(225,215,200,0.85)' }}
+                    >
+                      {action.label}
+                    </div>
+                    {mode === 'chat' && action.label === 'Start morning briefing' && (
+                      <div className="mt-1 text-[10px]" style={{ color: 'rgba(160,150,130,0.4)' }}>
+                        Start with the day shape, the pressure points, and what belongs in the commit.
+                      </div>
+                    )}
+                  </div>
+                  <ActionIcon className="h-3.5 w-3.5 shrink-0 transition-transform group-hover:translate-x-0.5" style={{ color: 'rgba(160,150,130,0.4)' }} />
+                </button>
+              );
+            })}
+          </div>
+
+          <div className="flex flex-col">
+            {state.secondaryActions.map((action) => {
+              const ActionIcon = action.icon;
+              return (
+                <button
+                  key={action.label}
+                  onClick={() => onAction(action.prompt)}
+                  className="group flex items-center gap-3 text-left transition-all"
+                  style={{
+                    background: 'transparent',
+                    border: 'none',
+                    borderBottom: '0.5px solid rgba(255,255,255,0.03)',
+                    padding: '10px 0',
+                  }}
+                >
+                  {ActionIcon ? <ActionIcon className="h-3.5 w-3.5 shrink-0" style={{ color: 'rgba(160,150,130,0.35)' }} /> : <ArrowRight className="h-3.5 w-3.5 shrink-0" style={{ color: 'rgba(160,150,130,0.35)' }} />}
+                  <div className="text-[12px] leading-snug" style={{ color: 'rgba(190,180,160,0.7)' }}>
+                    {action.label}
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function MessageBubble({ message, isFirst }: { message: ChatMessage; isFirst: boolean }) {
   if (message.role === 'user' && isFirst) {
     // Don't render the auto-fired "Run my morning briefing" message
@@ -330,19 +771,19 @@ function MessageBubble({ message, isFirst }: { message: ChatMessage; isFirst: bo
   if (message.role === 'user') {
     return (
       <div className="flex justify-end">
-        <div className="max-w-[85%] bg-bg-elevated/80 rounded-xl rounded-br-sm px-3.5 py-2 text-[15px] text-text-primary leading-relaxed">
-          {message.content}
-        </div>
+      <div className="max-w-[88%] bg-bg-elevated/80 rounded-xl rounded-br-sm px-4 py-3 text-[15px] text-text-primary leading-relaxed">
+        {message.content}
+      </div>
       </div>
     );
   }
 
   return (
-    <div className="flex gap-3 animate-fade-in">
+    <div className="flex gap-4 animate-fade-in">
       <div className="w-5 h-5 mt-0.5 rounded-full bg-accent-warm/20 flex items-center justify-center shrink-0">
         <span className="text-[9px] font-bold text-accent-warm">TF</span>
       </div>
-      <div className="flex-1 min-w-0 prose-briefing text-[15px] leading-relaxed text-text-primary">
+      <div className="flex-1 min-w-0 pr-2 prose-briefing text-[15px] leading-[1.8] text-text-primary">
         <ReactMarkdown remarkPlugins={[remarkGfm]}>{message.content}</ReactMarkdown>
       </div>
     </div>

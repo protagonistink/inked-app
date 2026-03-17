@@ -6,6 +6,7 @@ import type {
   GCalEvent,
   InkContext,
   InkJournalEntry,
+  InkMode,
   PomodoroState,
 } from './index';
 
@@ -47,6 +48,7 @@ export interface BriefingContext {
   workdayEndMin: number;
   monthlyOneThing?: string;
   monthlyWhy?: string;
+  inkMode?: InkMode;
 }
 
 export interface UserPhysics {

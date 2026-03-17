@@ -1,7 +1,7 @@
 import { format } from 'date-fns';
 import { getToday } from '@/lib/planner';
 import type { BriefingContext } from '@/types/electron';
-import type { InboxItem, MonthlyPlan, PlannedTask, ScheduleBlock, WeeklyGoal } from '@/types';
+import type { InboxItem, InkMode, MonthlyPlan, PlannedTask, ScheduleBlock, WeeklyGoal } from '@/types';
 
 export interface CommitChip {
   title: string;
@@ -16,6 +16,7 @@ interface BuildBriefingContextOptions {
   workdayEnd: { hour: number; min: number };
   scheduleBlocks: ScheduleBlock[];
   monthlyPlan?: MonthlyPlan | null;
+  inkMode?: InkMode;
 }
 
 function normalizeTaskTitle(value: string) {
@@ -28,6 +29,7 @@ export async function buildBriefingContext({
   workdayEnd,
   scheduleBlocks,
   monthlyPlan,
+  inkMode,
 }: BuildBriefingContextOptions): Promise<BriefingContext> {
   let asanaTasks: BriefingContext['asanaTasks'] = [];
   try {
@@ -95,6 +97,7 @@ export async function buildBriefingContext({
     workdayEndMin: workdayEnd.min,
     monthlyOneThing: monthlyPlan?.oneThing,
     monthlyWhy: monthlyPlan?.why,
+    inkMode,
   };
 }
 

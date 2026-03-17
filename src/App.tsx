@@ -1,5 +1,5 @@
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react';
-import { format, startOfWeek } from 'date-fns';
+import { format } from 'date-fns';
 import { DndProvider } from 'react-dnd';
 import { HTML5Backend } from 'react-dnd-html5-backend';
 import { Lock, Sparkles } from 'lucide-react';
@@ -22,33 +22,11 @@ const WeeklyPlanningWizard = lazy(() => import('./components/WeeklyPlanningWizar
 const MonthlyPlanningWizard = lazy(() => import('./components/MonthlyPlanningWizard').then((module) => ({ default: module.MonthlyPlanningWizard })));
 const InkThread = lazy(() => import('./components/Thread').then((module) => ({ default: module.InkThread })));
 const MorningBriefing = lazy(() => import('./components/MorningBriefing').then((module) => ({ default: module.MorningBriefing })));
+const Archive = lazy(() => import('./components/Archive').then((module) => ({ default: module.Archive })));
 
-function ArchiveView() {
-  const { archiveTasks } = useApp();
+const INK_PANEL_WIDTH = 380;
 
-  return (
-    <div className="flex-1 bg-bg px-8 py-8 overflow-y-auto">
-      <div className="rounded-lg border border-border bg-bg-card p-5">
-        <div className="flex items-center justify-between mb-4">
-          <h2 className="text-[16px] font-medium text-text-emphasis">Archive</h2>
-          <span className="text-[11px] font-mono text-text-muted">{archiveTasks.length} kept</span>
-        </div>
-        <div className="flex flex-col gap-3">
-          {archiveTasks.length === 0 ? (
-            <div className="text-[13px] text-text-muted">Nothing has moved out of the day yet.</div>
-          ) : (
-            archiveTasks.map((task) => (
-              <div key={task.id} className="rounded-md border border-border-subtle bg-bg px-4 py-3">
-                <div className="text-[13px] text-text-primary">{task.title}</div>
-                <div className="text-[10px] uppercase tracking-[0.18em] text-text-muted mt-1">{task.status}</div>
-              </div>
-            ))
-          )}
-        </div>
-      </div>
-    </div>
-  );
-}
+type LayoutPhase = 'opening' | 'active';
 
 function AppLayout() {
   const [showSettings, setShowSettings] = useState(false);
@@ -56,17 +34,18 @@ function AppLayout() {
   const [briefingSessionId, setBriefingSessionId] = useState(0);
   const [briefingMode, setBriefingMode] = useState<'briefing' | 'chat'>('briefing');
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [inkStreaming, setInkStreaming] = useState(false);
+  const [layoutPhase, setLayoutPhase] = useState<LayoutPhase>('active');
   const { isFocus } = useTheme();
   const {
     activeView,
-    weeklyPlanningLastCompleted,
-    openWeeklyPlanning,
     dailyPlan,
     dayLocked,
     focusResumePrompt,
     resumeFocusMode,
     dismissFocusPrompt,
     setActiveView,
+    isInitialized,
   } = useApp();
   const autoBriefingCheckedRef = useRef(false);
 
@@ -83,12 +62,14 @@ function AppLayout() {
     if (!isCancelled() && settings.anthropic.configured && !dismissed) {
       setBriefingMode('briefing');
       setShowBriefing(true);
+      setLayoutPhase('opening');
     }
   }, [dailyPlan.committedTaskIds.length]);
 
   // Auto-open briefing: before noon, no commits yet, API key configured
+  // Gate on isInitialized so dailyPlan reflects the real stored state
   useEffect(() => {
-    if (autoBriefingCheckedRef.current) return;
+    if (!isInitialized || autoBriefingCheckedRef.current) return;
     autoBriefingCheckedRef.current = true;
 
     let cancelled = false;
@@ -97,109 +78,144 @@ function AppLayout() {
     return () => {
       cancelled = true;
     };
-  }, [checkAutoBriefing]);
+  }, [isInitialized, checkAutoBriefing]);
 
-  useEffect(() => {
-    const now = new Date();
-    const weekStart = format(startOfWeek(new Date(), { weekStartsOn: 1 }), 'yyyy-MM-dd');
-    const isMondayMorning = now.getDay() === 1 && now.getHours() < 12;
+  // Weekly planning wizard is opened manually from the sidebar — no auto-open
 
-    if (isMondayMorning && (!weeklyPlanningLastCompleted || weeklyPlanningLastCompleted < weekStart)) {
-      openWeeklyPlanning();
-    }
-  }, [openWeeklyPlanning, weeklyPlanningLastCompleted]);
+  const closeBriefing = useCallback(() => {
+    setShowBriefing(false);
+    setLayoutPhase('active');
+    window.api.store.set(`briefing.dismissed.${format(new Date(), 'yyyy-MM-dd')}`, true);
+  }, []);
 
   // Escape key closes Ink overlay
   useEffect(() => {
     if (!showBriefing) return;
     function handleKeyDown(e: KeyboardEvent) {
-      if (e.key === 'Escape') {
-        setShowBriefing(false);
-        window.api.store.set(`briefing.dismissed.${format(new Date(), 'yyyy-MM-dd')}`, true);
-      }
+      if (e.key === 'Escape') closeBriefing();
     }
     document.addEventListener('keydown', handleKeyDown);
     return () => document.removeEventListener('keydown', handleKeyDown);
-  }, [showBriefing]);
+  }, [showBriefing, closeBriefing]);
 
+  const isOpening = layoutPhase === 'opening' && showBriefing;
   const sidebarIsCollapsed = isFocus || sidebarCollapsed || dayLocked || showBriefing;
   const sourcePanelIsCollapsed = isFocus || dayLocked;
 
   return (
-    <div className="grain cinematic-shell relative flex h-screen w-full bg-bg text-text-primary font-sans overflow-hidden transition-colors duration-700">
+    <div
+      data-ink-open={showBriefing ? 'true' : 'false'}
+      className={cn(
+        'cinematic-shell relative flex h-screen w-full bg-bg text-text-primary font-sans overflow-hidden transition-colors duration-700',
+        !showBriefing && 'grain'
+      )}
+    >
       <div className="drag-region" />
-      <AtmosphereLayer />
-      <Sidebar
-        collapsed={sidebarIsCollapsed}
-        onToggleCollapse={() => setSidebarCollapsed((value) => !value)}
-        onSettingsClick={() => setShowSettings(true)}
-        onShowBriefing={() => { setBriefingMode('briefing'); setShowBriefing(true); }}
-      />
-      {/* Content area — shrinks when Ink opens via margin-right */}
-      <div
-        className="flex flex-1 overflow-hidden transition-[margin,padding] duration-[400ms] ease-[cubic-bezier(0.4,0,0.2,1)]"
-        style={{ 
-          marginRight: activeView === 'flow' && showBriefing ? 320 : 0
-        }}
-      >
-        {activeView === 'flow' && (
-          <>
-            {/* Threads */}
-            <div className={cn(
-              'shrink-0 h-full overflow-hidden transition-[width,opacity] duration-[600ms] ease-[cubic-bezier(0.4,0,0.2,1)]',
-              sourcePanelIsCollapsed ? 'w-0 min-w-0 opacity-0 pointer-events-none' : 'w-[264px] opacity-100'
-            )}>
-              <UnifiedInbox collapsed={sourcePanelIsCollapsed} />
-            </div>
-            {/* Today's Plan — slightly narrower than Day Frame */}
-            <div 
-              className={cn(
-                'h-full overflow-hidden transition-[width,flex,opacity,margin] duration-[600ms] ease-[cubic-bezier(0.4,0,0.2,1)]',
-                isFocus ? 'w-0 min-w-0 flex-[0_0_0%] opacity-0 pointer-events-none' : 'flex-1 min-w-[280px] opacity-100'
-              )}
-              style={{ flex: isFocus ? '0 0 0%' : '0.9 1 0%' }}
-            >
-              <TodaysFlow collapsed={dayLocked} />
-            </div>
-            {/* Day Frame — slightly wider than Plan */}
-            <div className="flex-1 min-w-[320px] h-full overflow-hidden transition-[flex] duration-[600ms] ease-[cubic-bezier(0.4,0,0.2,1)]" style={{ flex: '1.1 1 0%' }}>
-              <Timeline />
-            </div>
-          </>
-        )}
-        {activeView === 'goals' && (
-          <>
-            <UnifiedInbox collapsed={isFocus} />
+      {!isOpening && !showBriefing && <AtmosphereLayer />}
+
+      {/* ═══ OPENING LAYOUT: Ink + compact Timeline ═══ */}
+      {isOpening ? (
+        <>
+          {/* Collapsed sidebar — icon strip only */}
+          <Sidebar
+            collapsed
+            onToggleCollapse={() => {}}
+            onSettingsClick={() => setShowSettings(true)}
+            onShowBriefing={() => {}}
+          />
+          {/* Ink panel — inline, fills main area */}
+          <div className="flex-1 min-w-0 h-full overflow-hidden" style={{ flex: '1.2 1 0%' }}>
             <Suspense fallback={null}>
-              <WeeklyIntentions />
+              <MorningBriefing
+                key={briefingSessionId}
+                mode={briefingMode}
+                onClose={closeBriefing}
+                onNewChat={() => setBriefingSessionId((value) => value + 1)}
+                onStreamingChange={setInkStreaming}
+              />
             </Suspense>
-          </>
-        )}
-        {activeView === 'archive' && <ArchiveView />}
-      </div>
-      {/* Ink panel — slides in from right, GPU-composited transform */}
-      <div
-        className={cn(
-          'absolute top-0 right-0 h-full w-[320px] z-20 transition-[transform,opacity] duration-[400ms] ease-[cubic-bezier(0.4,0,0.2,1)]',
-          showBriefing
-            ? 'translate-x-0 opacity-100'
-            : 'translate-x-full opacity-0 pointer-events-none'
-        )}
-      >
-        {showBriefing && (
-          <Suspense fallback={null}>
-            <MorningBriefing
-              key={briefingSessionId}
-              mode={briefingMode}
-              onClose={() => {
-                setShowBriefing(false);
-                window.api.store.set(`briefing.dismissed.${format(new Date(), 'yyyy-MM-dd')}`, true);
-              }}
-              onNewChat={() => setBriefingSessionId((value) => value + 1)}
-            />
-          </Suspense>
-        )}
-      </div>
+          </div>
+          {/* Compact Timeline — day's calendar at a glance */}
+          <div className="h-full overflow-hidden border-l border-border-subtle" style={{ flex: '0.8 1 0%', minWidth: 280 }}>
+            <Timeline />
+          </div>
+        </>
+      ) : (
+        <>
+          {/* ═══ ACTIVE LAYOUT: full panels ═══ */}
+          <Sidebar
+            collapsed={sidebarIsCollapsed}
+            onToggleCollapse={() => setSidebarCollapsed((value) => !value)}
+            onSettingsClick={() => setShowSettings(true)}
+            onShowBriefing={() => { setBriefingMode('briefing'); setShowBriefing(true); }}
+          />
+          {/* Content area — shrinks when Ink opens via margin-right */}
+          <div
+            className="flex flex-1 overflow-hidden transition-[margin,padding] duration-[400ms] ease-[cubic-bezier(0.4,0,0.2,1)]"
+            style={{
+              marginRight: activeView === 'flow' && showBriefing ? INK_PANEL_WIDTH : 0
+            }}
+          >
+            {activeView === 'flow' && (
+              <>
+                {/* Threads */}
+                <div className={cn(
+                  'shrink-0 h-full overflow-hidden transition-[width,opacity] duration-[600ms] ease-[cubic-bezier(0.4,0,0.2,1)]',
+                  sourcePanelIsCollapsed ? 'w-0 min-w-0 opacity-0 pointer-events-none' : 'w-[264px] opacity-100'
+                )}>
+                  <UnifiedInbox collapsed={sourcePanelIsCollapsed} />
+                </div>
+                {/* Today's Plan — slightly narrower than Day Frame */}
+                <div
+                  className={cn(
+                    'h-full overflow-hidden transition-[width,flex,opacity,margin] duration-[600ms] ease-[cubic-bezier(0.4,0,0.2,1)]',
+                    isFocus ? 'w-0 min-w-0 flex-[0_0_0%] opacity-0 pointer-events-none' : 'flex-1 min-w-[280px] opacity-100'
+                  )}
+                  style={{ flex: isFocus ? '0 0 0%' : '0.9 1 0%' }}
+                >
+                  <TodaysFlow collapsed={dayLocked} />
+                </div>
+                {/* Day Frame — slightly wider than Plan */}
+                <div className="flex-1 min-w-[320px] h-full overflow-hidden transition-[flex] duration-[600ms] ease-[cubic-bezier(0.4,0,0.2,1)]" style={{ flex: '1.1 1 0%' }}>
+                  <Timeline />
+                </div>
+              </>
+            )}
+            {activeView === 'goals' && (
+              <Suspense fallback={null}>
+                <WeeklyIntentions />
+              </Suspense>
+            )}
+            {activeView === 'archive' && (
+              <Suspense fallback={null}>
+                <Archive />
+              </Suspense>
+            )}
+          </div>
+          {/* Ink panel — slides in from right, GPU-composited transform */}
+          <div
+            className={cn(
+              'absolute top-0 right-0 h-full z-20 transition-[transform,opacity] duration-[400ms] ease-[cubic-bezier(0.4,0,0.2,1)]',
+              showBriefing
+                ? 'translate-x-0 opacity-100'
+                : 'translate-x-full opacity-0 pointer-events-none'
+            )}
+            style={{ width: INK_PANEL_WIDTH }}
+          >
+            {showBriefing && (
+              <Suspense fallback={null}>
+                <MorningBriefing
+                  key={briefingSessionId}
+                  mode={briefingMode}
+                  onClose={closeBriefing}
+                  onNewChat={() => setBriefingSessionId((value) => value + 1)}
+                  onStreamingChange={setInkStreaming}
+                />
+              </Suspense>
+            )}
+          </div>
+        </>
+      )}
       {showSettings && (
         <Suspense fallback={null}>
           <Settings onClose={() => setShowSettings(false)} />
@@ -225,9 +241,19 @@ function AppLayout() {
           }}
           title="Open Ink"
           aria-label="Open Ink"
-          className="no-drag absolute bottom-6 right-6 z-40 flex h-12 w-12 items-center justify-center rounded-full border border-border bg-bg-card/92 text-text-muted shadow-[0_16px_40px_rgba(0,0,0,0.24)] backdrop-blur-md transition-all hover:-translate-y-0.5 hover:border-accent-warm/35 hover:text-accent-warm"
+          className={cn(
+            'ink-fab no-drag absolute bottom-6 right-6 z-40 flex h-12 w-12 items-center justify-center rounded-full border border-border bg-bg-card/92 text-text-muted shadow-[0_16px_40px_rgba(0,0,0,0.24)] backdrop-blur-md transition-[border-color,color] hover:border-accent-warm/35 hover:text-accent-warm',
+            inkStreaming && 'ink-fab--thinking'
+          )}
         >
-          <Sparkles className="h-5 w-5" />
+          {inkStreaming && (
+            <>
+              <span className="ink-fab__ring ink-fab__ring--1" />
+              <span className="ink-fab__ring ink-fab__ring--2" />
+              <span className="ink-fab__ring ink-fab__ring--3" />
+            </>
+          )}
+          <Sparkles className="ink-fab__icon h-5 w-5" />
         </button>
       )}
       <div className="absolute h-px w-px overflow-hidden -left-[9999px] top-0">

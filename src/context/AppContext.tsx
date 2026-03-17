@@ -4,6 +4,7 @@ import {
   useContext,
   useEffect,
   useReducer,
+  useRef,
   useState,
   type ReactNode,
 } from 'react';
@@ -11,6 +12,7 @@ import type {
   Countdown,
   DailyPlan,
   DailyRitual,
+  DayEntry,
   InboxItem,
   MonthlyPlan,
   PlannedTask,
@@ -18,7 +20,7 @@ import type {
   TimeLogEntry,
   WeeklyGoal,
 } from '@/types';
-import { getToday } from '@/lib/planner';
+import { getToday, mergeScheduleBlocksWithRituals } from '@/lib/planner';
 import {
   loadPlannerState,
   usePlannerPersistence,
@@ -45,10 +47,12 @@ interface AppContextValue {
   setActiveSource: (source: SourceView) => void;
   weeklyGoals: WeeklyGoal[];
   addWeeklyGoal: (title: string, color?: string) => boolean;
+  removeWeeklyGoal: (id: string) => void;
   renameWeeklyGoal: (id: string, title: string) => void;
   updateGoalWhy: (id: string, why: string) => void;
   updateGoalColor: (id: string, color: string) => void;
   updateGoalCountdown: (id: string, countdownId: string | null) => void;
+  reorderWeeklyGoals: (fromIndex: number, toIndex: number) => void;
   plannedTasks: PlannedTask[];
   dayTasks: PlannedTask[];
   committedTasks: PlannedTask[];
@@ -92,11 +96,14 @@ interface AppContextValue {
   closeWeeklyPlanning: () => void;
   completeWeeklyPlanning: () => void;
   migrateOldTasks: () => PlannedTask[];
+  workdayStart: { hour: number; min: number };
+  setWorkdayStart: (hour: number, min: number) => void;
   workdayEnd: { hour: number; min: number };
   setWorkdayEnd: (hour: number, min: number) => void;
   updateTaskEstimate: (id: string, mins: number) => void;
   nestTask: (childId: string, parentId: string) => void;
   unnestTask: (childId: string) => void;
+  isInitialized: boolean;
   dayLocked: boolean;
   lockDay: () => void;
   unlockDay: () => void;
@@ -112,6 +119,8 @@ interface AppContextValue {
   openMonthlyPlanning: () => void;
   closeMonthlyPlanning: () => void;
   updateRitualEstimate: (id: string, mins: number) => void;
+  dayEntries: DayEntry[];
+  saveDayEntry: (date: string, text: string) => void;
 }
 
 const AppContext = createContext<AppContextValue>(null!);
@@ -130,6 +139,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [monthlyPlanPrompt, setMonthlyPlanPrompt] = useState(false);
   const [isMonthlyPlanningOpen, setIsMonthlyPlanningOpen] = useState(false);
   const [focusResumePrompt, setFocusResumePrompt] = useState(false);
+  const focusBridgeReadyRef = useRef(false);
   const [syncStatus, setSyncStatus] = useState<{ asana: string | null; gcal: string | null; loading: boolean }>({
     asana: null,
     gcal: null,
@@ -144,7 +154,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
     timeLogs,
     rituals,
     countdowns,
+    workdayStart,
     workdayEnd,
+    dayEntries,
   } = plannerState;
 
   const setWeeklyGoals = useCallback(createPlannerFieldSetter(dispatchPlanner, 'weeklyGoals'), []);
@@ -154,7 +166,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const setTimeLogs = useCallback(createPlannerFieldSetter(dispatchPlanner, 'timeLogs'), []);
   const setRituals = useCallback(createPlannerFieldSetter(dispatchPlanner, 'rituals'), []);
   const setCountdowns = useCallback(createPlannerFieldSetter(dispatchPlanner, 'countdowns'), []);
+  const setWorkdayStartState = useCallback(createPlannerFieldSetter(dispatchPlanner, 'workdayStart'), []);
   const setWorkdayEndState = useCallback(createPlannerFieldSetter(dispatchPlanner, 'workdayEnd'), []);
+  const setDayEntries = useCallback(createPlannerFieldSetter(dispatchPlanner, 'dayEntries'), []);
 
   useEffect(() => {
     async function loadState() {
@@ -166,12 +180,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
             payload: storedPlannerStateToPlannerState(stored),
           });
         }
-        if (stored?.activeView) {
-          const storedView = stored.activeView as View | 'panopticon';
-          setActiveView(storedView === 'panopticon' ? 'flow' : storedView);
-        }
+        // Always start on flow view — don't restore previous view
+        setActiveView('flow');
         if (stored?.activeSource) setActiveSource(stored.activeSource);
         if (stored?.weeklyPlanningLastCompleted !== undefined) setWeeklyPlanningLastCompleted(stored.weeklyPlanningLastCompleted ?? null);
+        if (stored?.workdayStart) setWorkdayStartState(stored.workdayStart);
         if (stored?.workdayEnd) setWorkdayEndState(stored.workdayEnd);
         if (stored?.monthlyPlan !== undefined) setMonthlyPlanState(stored.monthlyPlan ?? null);
       } catch (error) {
@@ -204,6 +217,25 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, []);
 
   useEffect(() => {
+    if (!focusBridgeReadyRef.current) {
+      focusBridgeReadyRef.current = true;
+      return;
+    }
+
+    const syncFocusMode = async () => {
+      const result = dayLocked
+        ? await window.api.focus.enable()
+        : await window.api.focus.disable();
+
+      if (!result.success) {
+        console.error(dayLocked ? 'Failed to enable focus protections:' : 'Failed to disable focus protections:', result.error);
+      }
+    };
+
+    void syncFocusMode();
+  }, [dayLocked]);
+
+  useEffect(() => {
     if (!isInitialized) return;
     const currentMonth = new Date().toISOString().slice(0, 7); // "2026-03"
     if (!monthlyPlan || monthlyPlan.month !== currentMonth) {
@@ -228,15 +260,28 @@ export function AppProvider({ children }: { children: ReactNode }) {
       rituals,
       countdowns,
       weeklyPlanningLastCompleted,
+      workdayStart,
       workdayEnd,
       monthlyPlan,
+      dayEntries,
     },
   });
+
+  // Sync weekly goals → inkContext.threadsRaw so Ink prompts have goal context
+  useEffect(() => {
+    if (!isInitialized || weeklyGoals.length === 0) return;
+    const threadsRaw = weeklyGoals
+      .map((g) => `- ${g.title}${g.why ? ` (why: ${g.why})` : ''}`)
+      .join('\n');
+    void window.api.ink.writeContext({ threadsRaw });
+  }, [isInitialized, weeklyGoals]);
 
   const { refreshExternalData } = useExternalPlannerSync({
     setPlannedTasks,
     setScheduleBlocks,
     setSyncStatus,
+    rituals,
+    workdayStart,
   });
 
   useAutoRefresh({
@@ -244,6 +289,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
     intervalMs: 5 * 60 * 1000,
     refresh: refreshExternalData,
   });
+
+  useEffect(() => {
+    if (!isInitialized) return;
+    setScheduleBlocks((prev) => mergeScheduleBlocksWithRituals(prev, rituals, workdayStart));
+  }, [isInitialized, rituals, setScheduleBlocks, workdayStart]);
 
   const addWeeklyGoal = useCallback((title: string, color = 'bg-text-muted') => {
     if (!title.trim() || weeklyGoals.length >= 3) return false;
@@ -253,6 +303,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
     ]);
     return true;
   }, [weeklyGoals.length]);
+
+  const removeWeeklyGoal = useCallback((id: string) => {
+    setWeeklyGoals((prev) => prev.filter((goal) => goal.id !== id));
+    // Clear weeklyGoalId on any tasks linked to this goal
+    setPlannedTasks((prev) => prev.map((t) => t.weeklyGoalId === id ? { ...t, weeklyGoalId: null } : t));
+  }, []);
 
   const renameWeeklyGoal = useCallback((id: string, title: string) => {
     setWeeklyGoals((prev) => prev.map((goal) => goal.id === id ? { ...goal, title: title.trim() || goal.title } : goal));
@@ -268,6 +324,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const updateGoalCountdown = useCallback((id: string, countdownId: string | null) => {
     setWeeklyGoals((prev) => prev.map((goal) => goal.id === id ? { ...goal, countdownId: countdownId ?? undefined } : goal));
+  }, []);
+
+  const reorderWeeklyGoals = useCallback((fromIndex: number, toIndex: number) => {
+    setWeeklyGoals((prev) => {
+      const next = [...prev];
+      const [moved] = next.splice(fromIndex, 1);
+      next.splice(toIndex, 0, moved);
+      return next;
+    });
   }, []);
 
   const addRitual = useCallback((title: string) => {
@@ -331,9 +396,25 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setIsWeeklyPlanningOpen(false);
   }, []);
 
+  const setWorkdayStart = useCallback((hour: number, min: number) => {
+    const nextStart = hour * 60 + min;
+    const currentEnd = workdayEnd.hour * 60 + workdayEnd.min;
+    const clampedStart = Math.min(nextStart, currentEnd - 60);
+    setWorkdayStartState({
+      hour: Math.floor(clampedStart / 60),
+      min: clampedStart % 60,
+    });
+  }, [workdayEnd, setWorkdayStartState]);
+
   const setWorkdayEnd = useCallback((hour: number, min: number) => {
-    setWorkdayEndState({ hour, min });
-  }, []);
+    const nextEnd = hour * 60 + min;
+    const currentStart = workdayStart.hour * 60 + workdayStart.min;
+    const clampedEnd = Math.max(nextEnd, currentStart + 60);
+    setWorkdayEndState({
+      hour: Math.floor(clampedEnd / 60),
+      min: clampedEnd % 60,
+    });
+  }, [setWorkdayEndState, workdayStart]);
 
   const lockDay = useCallback(() => {
     const today = new Date().toISOString().split('T')[0];
@@ -441,6 +522,19 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setTimeLogs((prev) => [entry, ...prev]);
   }, [plannedTasks, setTimeLogs, weeklyGoals]);
 
+  const saveDayEntry = useCallback((date: string, text: string) => {
+    setDayEntries((prev) => {
+      const existing = prev.findIndex((e) => e.date === date);
+      if (existing >= 0) {
+        const next = [...prev];
+        next[existing] = { ...next[existing], journalText: text, savedAt: new Date().toISOString() };
+        return next;
+      }
+      const chapterNumber = prev.length + 1;
+      return [...prev, { date, journalText: text, chapterNumber, savedAt: new Date().toISOString() }];
+    });
+  }, [setDayEntries]);
+
   const resetDay = useCallback(async () => {
     const focusBlocks = scheduleBlocks.filter((block) => !block.readOnly && block.kind === 'focus');
     await Promise.allSettled(
@@ -449,7 +543,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
         .map((block) => window.api.gcal.deleteEvent(block.eventId!, block.calendarId))
     );
 
-    setScheduleBlocks((prev) => prev.filter((block) => block.readOnly || block.kind !== 'focus'));
+    setScheduleBlocks((prev) =>
+      mergeScheduleBlocksWithRituals(
+        prev.filter((block) => block.readOnly || block.kind !== 'focus'),
+        rituals,
+        workdayStart
+      )
+    );
     setPlannedTasks((prev) =>
       prev.map((task) =>
         task.status === 'committed' || task.status === 'scheduled'
@@ -461,7 +561,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setLastCommitTimestamp(0);
     void window.api.store.set('dayLocked', false);
     setDayLocked(false);
-  }, [scheduleBlocks, setDailyPlan, setLastCommitTimestamp, setPlannedTasks, setScheduleBlocks]);
+  }, [rituals, scheduleBlocks, setDailyPlan, setLastCommitTimestamp, setPlannedTasks, setScheduleBlocks, workdayStart]);
 
   return (
     <AppContext.Provider
@@ -472,10 +572,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
         setActiveSource,
         weeklyGoals,
         addWeeklyGoal,
+        removeWeeklyGoal,
         renameWeeklyGoal,
         updateGoalWhy,
         updateGoalColor,
         updateGoalCountdown,
+        reorderWeeklyGoals,
         plannedTasks,
         dayTasks,
         committedTasks,
@@ -519,6 +621,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
         closeWeeklyPlanning,
         completeWeeklyPlanning,
         migrateOldTasks,
+        workdayStart,
+        setWorkdayStart,
         workdayEnd,
         setWorkdayEnd,
         updateTaskEstimate,
@@ -539,6 +643,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
         openMonthlyPlanning,
         closeMonthlyPlanning,
         updateRitualEstimate,
+        dayEntries,
+        saveDayEntry,
+        isInitialized,
       }}
     >
       {children}

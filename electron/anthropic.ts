@@ -1,5 +1,7 @@
 import { ipcMain, IpcMainInvokeEvent } from 'electron';
 import { store } from './store';
+import type { InkContext, InkMode } from '../src/types';
+import { INK_TOKEN_LIMITS } from '../src/lib/ink-mode';
 
 const ANTHROPIC_API_URL = 'https://api.anthropic.com/v1/messages';
 
@@ -55,11 +57,46 @@ interface BriefingContext {
   userPhysics?: UserPhysics;
   monthlyOneThing?: string;
   monthlyWhy?: string;
+  inkMode?: InkMode;
 }
 
 function logAI(message: string, ...args: unknown[]) {
   if (!AI_DEBUG) return;
   console.log(message, ...args);
+}
+
+function loadInkContext(): InkContext | null {
+  const raw = store.get('inkContext') as InkContext | undefined;
+  if (!raw || typeof raw !== 'object') return null;
+  return raw;
+}
+
+function formatInkContextForPrompt(ink: InkContext): string {
+  const sections: string[] = [];
+
+  // Weekly interview context (Sprint 4 will populate these)
+  if (ink.weeklyContext) sections.push(`Weekly context: ${ink.weeklyContext}`);
+  if (ink.hierarchy) sections.push(`Priority hierarchy: ${ink.hierarchy}`);
+  if (ink.musts) sections.push(`This week's musts: ${ink.musts}`);
+  if (ink.currentPriority) sections.push(`Current priority: ${ink.currentPriority}`);
+  if (ink.protectedBlocks) sections.push(`Protected blocks: ${ink.protectedBlocks}`);
+  if (ink.tells) sections.push(`Working pattern tells: ${ink.tells}`);
+  if (ink.honestAudit) sections.push(`Honest audit: ${ink.honestAudit}`);
+
+  // Journal entries (rolling 7-day window)
+  if (ink.journalEntries?.length > 0) {
+    const journalLines = ink.journalEntries.map((entry) => {
+      const movers = entry.needleMovers
+        ?.map((m) => `${m.goalTitle}: ${m.action}`)
+        .join('; ') || '';
+      return `${entry.date}: excites="${entry.excites}", needle-movers=[${movers}], artist-date="${entry.artistDate}"${entry.eveningReflection ? `, reflection="${entry.eveningReflection}"` : ''}`;
+    });
+    sections.push(`### Recent Journal (last 7 days)\n${journalLines.join('\n')}`);
+  }
+
+  return sections.length > 0
+    ? `## INK MEMORY\n\n${sections.join('\n')}\n\n---\n`
+    : '';
 }
 
 export function buildSystemPrompt(ctx: BriefingContext): string {
@@ -140,6 +177,10 @@ Patrick Kirkland — narrative strategist, screenwriter, and founder of Protagon
     ? `### Monthly Focus\n${ctx.monthlyOneThing}${ctx.monthlyWhy ? `\nWhy: ${ctx.monthlyWhy}` : ''}`
     : '';
 
+  // Load persistent Ink memory (weekly interview, journal entries, etc.)
+  const inkContext = loadInkContext();
+  const inkSection = inkContext ? formatInkContextForPrompt(inkContext) : '';
+
   // Character and behavioral instructions belong in your Anthropic Console system prompt.
   // This function injects only the live dynamic context that changes per-session.
   // The Console prompt handles: role, tone, briefing format, response constraints, etc.
@@ -151,7 +192,7 @@ ${physicsSection}
 
 ---
 
-## LIVE CONTEXT
+${inkSection}## LIVE CONTEXT
 
 ${monthlySection ? monthlySection + '\n\n' : ''}### Patrick's Weekly Goals
 ${goalsList}
@@ -176,7 +217,7 @@ ${alreadyCommitted}
 ---
 
 ## RESPONSE FORMAT
-- Hard limit: 200 words total. No exceptions.
+- Hard limit: ${ctx.inkMode === 'midday' ? '120' : ctx.inkMode === 'evening' ? '180' : '200'} words total. No exceptions.
 - Bullets for lists. Paragraphs max 2 sentences.
 - No preamble ("Great!", "Sure,", "Of course,"). No closing summaries.
 - Lead with signal. Every sentence earns its place or gets cut.`;
@@ -196,6 +237,7 @@ export function registerAnthropicHandlers() {
 
       const model = (store.get('anthropic.model') as string | undefined) ?? DEFAULT_MODEL;
       const ctxWithPhysics: BriefingContext = { ...context, userPhysics: loadUserPhysics() };
+      const maxTokens = ctxWithPhysics.inkMode ? INK_TOKEN_LIMITS[ctxWithPhysics.inkMode] : 400;
 
       // Window the conversation to avoid token bloat in long sessions
       const windowedMessages = messages.slice(-MAX_HISTORY_TURNS);
@@ -209,7 +251,7 @@ export function registerAnthropicHandlers() {
         },
         body: JSON.stringify({
           model,
-          max_tokens: 400,
+          max_tokens: maxTokens,
           system: buildSystemPrompt(ctxWithPhysics),
           messages: windowedMessages,
         }),
@@ -238,6 +280,7 @@ export function registerAnthropicHandlers() {
       const model = (store.get('anthropic.model') as string | undefined) ?? DEFAULT_MODEL;
       logAI('[AI] Using model:', model);
       const ctxWithPhysics: BriefingContext = { ...context, userPhysics: loadUserPhysics() };
+      const maxTokens = ctxWithPhysics.inkMode ? INK_TOKEN_LIMITS[ctxWithPhysics.inkMode] : 400;
 
       // Window the conversation to avoid token bloat in long sessions
       const windowedMessages = messages.slice(-MAX_HISTORY_TURNS);
@@ -252,7 +295,7 @@ export function registerAnthropicHandlers() {
         },
         body: JSON.stringify({
           model,
-          max_tokens: 400,
+          max_tokens: maxTokens,
           stream: true,
           system: buildSystemPrompt(ctxWithPhysics),
           messages: windowedMessages,
