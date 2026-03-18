@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, type CSSProperties } from 'react';
 import { Play, Pause, SkipForward, Square } from 'lucide-react';
 import type { PomodoroState } from '@/types';
 import { cn } from '@/lib/utils';
@@ -17,7 +17,7 @@ function formatSeconds(seconds: number): string {
 }
 
 export function PomodoroTimer({ floating = false }: { floating?: boolean }) {
-  const { logFocusSession, plannedTasks, setActiveTask, setActiveView } = useApp();
+  const { logFocusSession, plannedTasks, setActiveTask, setActiveView, toggleTask } = useApp();
   const { setMode } = useTheme();
   const [state, setState] = useState<PomodoroState>({
     isRunning: false,
@@ -31,6 +31,8 @@ export function PomodoroTimer({ floating = false }: { floating?: boolean }) {
   });
   const [lastWorkState, setLastWorkState] = useState<PomodoroState | null>(null);
   const [timeboxDecision, setTimeboxDecision] = useState<TimeboxDecisionState | null>(null);
+  // Holds task info from the completed work session so we can show the dialog after the break
+  const pendingDecisionRef = useRef<TimeboxDecisionState | null>(null);
 
   function logElapsedWorkSession(session: PomodoroState) {
     if (!session.currentTaskId || session.isBreak) return;
@@ -48,6 +50,7 @@ export function PomodoroTimer({ floating = false }: { floating?: boolean }) {
       setState((prevState) => {
         const nextState = newState as PomodoroState;
 
+        // Work session just ended → break starting: log the session and stash task info
         if (
           !floating &&
           prevState.isRunning &&
@@ -55,22 +58,33 @@ export function PomodoroTimer({ floating = false }: { floating?: boolean }) {
           nextState.isBreak &&
           prevState.currentTaskId
         ) {
-          const taskStillOpen = plannedTasks.find((task) => task.id === prevState.currentTaskId)?.status !== 'done';
-
           logFocusSession({
             taskId: prevState.currentTaskId,
             durationMins: prevState.totalTime / 60,
           });
 
+          const taskStillOpen = plannedTasks.find((task) => task.id === prevState.currentTaskId)?.status !== 'done';
           if (taskStillOpen) {
-            setActiveTask(prevState.currentTaskId);
-            setTimeboxDecision({
+            pendingDecisionRef.current = {
               taskId: prevState.currentTaskId,
               taskTitle: prevState.currentTaskTitle || 'Focus block',
-            });
-            void window.api.window.hidePomodoro();
-            void window.api.window.showMain();
+            };
           }
+        }
+
+        // Break just ended → show the rescope dialog now
+        if (
+          !floating &&
+          prevState.isBreak &&
+          !nextState.isBreak &&
+          pendingDecisionRef.current
+        ) {
+          const pending = pendingDecisionRef.current;
+          pendingDecisionRef.current = null;
+          setActiveTask(pending.taskId);
+          setTimeboxDecision(pending);
+          void window.api.window.hidePomodoro();
+          void window.api.window.showMain();
         }
 
         setLastWorkState(
@@ -98,6 +112,14 @@ export function PomodoroTimer({ floating = false }: { floating?: boolean }) {
     }
   }, [floating, setMode, state.isRunning, state.timeRemaining]);
 
+  // Auto-dismiss the timebox toast after 60s if the user ignores it
+  useEffect(() => {
+    if (!timeboxDecision) return;
+    const timer = window.setTimeout(() => setTimeboxDecision(null), 60_000);
+    return () => window.clearTimeout(timer);
+  }, [timeboxDecision]);
+
+
   const progress = state.totalTime > 0 ? 1 - state.timeRemaining / state.totalTime : 0;
   const circumference = 2 * Math.PI * 80;
   const strokeDashoffset = circumference * (1 - progress);
@@ -110,16 +132,26 @@ export function PomodoroTimer({ floating = false }: { floating?: boolean }) {
   return (
     <>
       {!floating && timeboxDecision && (
-        <div className="fixed inset-0 z-[140] flex items-center justify-center bg-black/55 px-4 backdrop-blur-sm">
-          <div className="w-full max-w-[420px] rounded-[24px] border border-border bg-bg-card/95 p-6 shadow-[0_30px_80px_rgba(0,0,0,0.45)]">
-            <div className="text-[10px] uppercase tracking-[0.18em] text-accent-warm">Timebox ended</div>
-            <h3 className="mt-3 font-display text-[28px] italic leading-none text-text-emphasis">
-              {timeboxDecision.taskTitle}
-            </h3>
-            <p className="mt-4 text-[13px] leading-relaxed text-text-muted">
-              The block is over, but the task is still open. Choose the tradeoff directly: keep going and let the day run longer, or stop and re-scope the rest of the plan.
-            </p>
-            <div className="mt-6 flex flex-wrap gap-3">
+        <div className="fixed bottom-6 left-1/2 z-[140] w-full max-w-[520px] -translate-x-1/2 px-4">
+          <div className="flex items-center gap-4 rounded-2xl border border-border bg-bg-card/96 px-5 py-4 shadow-[0_20px_60px_rgba(0,0,0,0.45)] backdrop-blur-xl">
+            <div className="min-w-0 flex-1">
+              <div className="text-[9px] uppercase tracking-[0.18em] text-accent-warm">Timebox ended</div>
+              <div className="mt-0.5 truncate font-display text-[15px] italic text-text-emphasis">
+                {timeboxDecision.taskTitle}
+              </div>
+            </div>
+            <div className="flex shrink-0 gap-2">
+              <button
+                onClick={() => {
+                  void toggleTask(timeboxDecision.taskId);
+                  setActiveView('flow');
+                  setMode('dark');
+                  setTimeboxDecision(null);
+                }}
+                className="rounded-full border border-border px-3 py-1.5 text-[11px] uppercase tracking-[0.14em] text-text-muted transition-colors hover:bg-bg-elevated hover:text-text-primary"
+              >
+                I&apos;m done
+              </button>
               <button
                 onClick={() => {
                   void window.api.pomodoro.start(timeboxDecision.taskId, timeboxDecision.taskTitle);
@@ -127,7 +159,7 @@ export function PomodoroTimer({ floating = false }: { floating?: boolean }) {
                   setMode('focus');
                   setTimeboxDecision(null);
                 }}
-                className="rounded-full bg-accent-warm px-4 py-2 text-[11px] uppercase tracking-[0.16em] text-white transition-colors hover:bg-accent-warm/90"
+                className="rounded-full bg-accent-warm px-3 py-1.5 text-[11px] uppercase tracking-[0.14em] text-white transition-colors hover:bg-accent-warm/90"
               >
                 Keep going
               </button>
@@ -137,15 +169,18 @@ export function PomodoroTimer({ floating = false }: { floating?: boolean }) {
                   setMode('dark');
                   setTimeboxDecision(null);
                 }}
-                className="rounded-full border border-border px-4 py-2 text-[11px] uppercase tracking-[0.16em] text-text-primary transition-colors hover:bg-bg-elevated"
+                className="rounded-full border border-border px-3 py-1.5 text-[11px] uppercase tracking-[0.14em] text-text-muted transition-colors hover:bg-bg-elevated hover:text-text-primary"
               >
-                Re-scope the day
+                Re-scope
               </button>
             </div>
           </div>
         </div>
       )}
-      <div className={cn('flex items-center justify-center bg-transparent', floating ? 'group w-full h-full' : 'w-[220px] h-[220px] drag-region')}>
+      <div
+        className={cn('flex items-center justify-center bg-transparent', floating ? 'group w-full h-full' : 'w-[220px] h-[220px] drag-region')}
+        style={floating ? ({ WebkitAppRegion: 'drag' } as CSSProperties) : undefined}
+      >
         <div className={cn('relative flex items-center justify-center', floating ? 'w-[92px] h-[92px]' : 'w-[180px] h-[180px]')}>
         {state.isBreak && (
           <>
@@ -208,6 +243,7 @@ export function PomodoroTimer({ floating = false }: { floating?: boolean }) {
               {!state.isRunning ? (
                 <button
                   onClick={() => void window.api.pomodoro.start(state.currentTaskId || lastWorkState?.currentTaskId || 'default', state.currentTaskTitle || lastWorkState?.currentTaskTitle || 'Focus')}
+                  title="Start focus session"
                   className="p-2 rounded-full bg-accent-warm/20 text-accent-warm hover:bg-accent-warm/30 transition-colors"
                 >
                   <Play className="w-4 h-4" />
@@ -216,6 +252,7 @@ export function PomodoroTimer({ floating = false }: { floating?: boolean }) {
                 <>
                   <button
                     onClick={() => void window.api.pomodoro.pause()}
+                    title={state.isPaused ? 'Resume' : 'Pause'}
                     className={cn(
                       'p-2 rounded-full transition-colors',
                       state.isPaused ? 'bg-accent-warm/20 text-accent-warm' : 'bg-bg-elevated text-text-muted hover:text-text-primary'
@@ -225,6 +262,7 @@ export function PomodoroTimer({ floating = false }: { floating?: boolean }) {
                   </button>
                   <button
                     onClick={() => void window.api.pomodoro.skip()}
+                    title="Skip to next phase"
                     className="p-2 rounded-full bg-bg-elevated text-text-muted hover:text-text-primary transition-colors"
                   >
                     <SkipForward className="w-3.5 h-3.5" />
@@ -235,6 +273,7 @@ export function PomodoroTimer({ floating = false }: { floating?: boolean }) {
                       void window.api.pomodoro.stop();
                       void window.api.window.hidePomodoro();
                     }}
+                    title="Stop session"
                     className="p-2 rounded-full bg-bg-elevated text-text-muted hover:text-text-primary transition-colors"
                   >
                     <Square className="w-3.5 h-3.5" />

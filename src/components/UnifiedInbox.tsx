@@ -81,13 +81,11 @@ function IncomingCard({
   item,
   selected,
   onSelect,
-  onBringForward,
   stagger,
 }: {
   item: InboxItem;
   selected: boolean;
   onSelect: () => void;
-  onBringForward: () => void;
   stagger: number;
 }) {
   const { isLight, isFocus } = useTheme();
@@ -154,9 +152,9 @@ function IncomingCard({
             'editorial-card p-5 rounded-[8px] flex flex-col gap-2.5 transition-all duration-300 cursor-pointer group',
             selected
               ? isLight
-                ? 'shadow-[0_18px_34px_rgba(120,113,100,0.12)]'
-                : 'border-accent-warm/24 shadow-[0_0_26px_rgba(200,60,47,0.08),0_24px_42px_rgba(0,0,0,0.18)]'
-              : cn(isLight ? 'hover:shadow-[0_16px_28px_rgba(120,113,100,0.08)]' : 'hover:border-border hover:shadow-[0_18px_32px_rgba(0,0,0,0.16)]'),
+                ? ''
+                : 'border-accent-warm/24'
+              : cn(isLight ? '' : 'hover:border-border'),
             !isDragging && 'hover:-translate-y-0.5'
           )}
         >
@@ -198,8 +196,8 @@ function IncomingCard({
           className={cn(
             'editorial-card p-4 rounded-[8px] flex flex-col gap-2',
             isLight
-              ? 'shadow-[0_18px_34px_rgba(120,113,100,0.12)]'
-              : 'border-accent-warm/24 shadow-[0_0_26px_rgba(200,60,47,0.08),0_24px_42px_rgba(0,0,0,0.18)]'
+              ? ''
+              : 'border-accent-warm/24'
           )}
         >
           {/* Back header: close button + title */}
@@ -210,6 +208,7 @@ function IncomingCard({
                 setFlipped(false);
               }}
               className="shrink-0 p-0.5 rounded text-text-muted hover:text-text-primary transition-colors"
+              title="Back to list"
               aria-label="Flip back"
             >
               <ChevronLeft className="w-3.5 h-3.5" />
@@ -237,21 +236,6 @@ function IncomingCard({
             )}
           </div>
 
-          {/* Bring Forward — bottom of back face */}
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              onBringForward();
-            }}
-            className={cn(
-              'mt-1 flex items-center justify-center gap-1.5 w-full px-3 py-1.5 rounded-md text-[11px] font-medium transition-all',
-              isLight
-                ? 'bg-bg text-text-primary hover:bg-border/30'
-                : 'bg-bg-elevated text-text-primary hover:bg-bg-hover border border-border-subtle'
-            )}
-          >
-            Bring Forward
-          </button>
         </div>
       </div>
     </div>
@@ -373,7 +357,7 @@ function SourcePopover({ source, onClose }: { source: SourceMeta; onClose: () =>
   return (
     <div
       ref={popoverRef}
-      className="absolute top-full left-0 mt-1.5 z-50 w-[200px] rounded-lg border border-border bg-bg-card shadow-[0_12px_32px_rgba(0,0,0,0.3)] p-3 flex flex-col gap-2.5"
+      className="absolute top-full left-0 mt-1.5 z-50 w-[200px] rounded-lg border border-border bg-bg-card p-3 flex flex-col gap-2.5"
     >
       <div className="flex items-center gap-2">
         <Icon className="w-3.5 h-3.5 text-text-muted" />
@@ -416,8 +400,8 @@ function SourcePills() {
               className={cn(
                 'no-drag flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[10px] font-medium tracking-[0.04em] transition-all duration-200 relative',
                 isActive
-                  ? 'bg-white/10 text-text-primary'
-                  : 'bg-white/[0.04] text-text-muted/60 hover:text-text-muted hover:bg-white/[0.06]'
+                  ? 'text-accent-warm border-b border-accent-warm pb-0.5 rounded-none'
+                  : 'text-text-muted/60 hover:text-text-muted'
               )}
             >
               <Icon className="w-3 h-3" />
@@ -447,7 +431,7 @@ function SourcePills() {
 const PAGE_SIZE = 7;
 
 export function UnifiedInbox({ collapsed = false }: { collapsed?: boolean }) {
-  const { activeSource, candidateItems, plannedTasks, selectedInboxId, selectInboxItem, bringForward, releaseTask, lastCommitTimestamp, syncStatus } = useApp();
+  const { activeSource, candidateItems, plannedTasks, selectedInboxId, selectInboxItem, releaseTask, lastCommitTimestamp, syncStatus } = useApp();
 
   const [showZen, setShowZen] = useState(false);
   const [page, setPage] = useState(0);
@@ -496,7 +480,6 @@ export function UnifiedInbox({ collapsed = false }: { collapsed?: boolean }) {
                   item={item}
                   selected={selectedInboxId === item.id}
                   onSelect={() => selectInboxItem(item.id)}
-                  onBringForward={() => bringForward(item.id)}
                   stagger={i + 1}
                 />
               ))}
@@ -574,7 +557,7 @@ export function UnifiedInbox({ collapsed = false }: { collapsed?: boolean }) {
         {content}
 
         {showZen && (
-          <div className="absolute inset-0 z-10 flex items-center justify-center bg-[radial-gradient(ellipse_at_center,rgba(200,60,47,0.10),transparent_65%)] animate-zen-flash pointer-events-none">
+          <div className="absolute inset-0 z-10 flex items-center justify-center bg-accent-warm/[0.07] animate-zen-flash pointer-events-none">
             <span className="font-display italic text-[28px] text-accent-warm/50 tracking-wide">
               Held.
             </span>

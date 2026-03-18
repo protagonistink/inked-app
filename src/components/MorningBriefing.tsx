@@ -23,7 +23,7 @@ import type { ChatMessage } from '@/types/electron';
 import { useBriefingStream } from '@/hooks/useBriefingStream';
 import { detectInkMode } from '@/lib/ink-mode';
 import type { InkMode } from '@/types';
-import { buildBriefingContext, parseCommitChips, parseScheduleProposal, type CommitChip, type ScheduleChip } from './morningBriefingUtils';
+import { buildBriefingContext, parseCommitChips, parseRitualSuggestions, parseScheduleProposal, type CommitChip, type ScheduleChip } from './morningBriefingUtils';
 
 type Phase = 'idle' | 'interview' | 'journal' | 'briefing' | 'conversation' | 'committing';
 type InkMoment = 'morning' | 'midday' | 'evening';
@@ -96,7 +96,7 @@ function getInkMoment(date = new Date()): InkMoment {
   return 'evening';
 }
 
-function getIntroState(moment: InkMoment): IntroState {
+function getIntroState(moment: InkMoment, userName = 'Patrick'): IntroState {
   if (moment === 'morning') {
     return {
       kicker: 'Morning briefing',
@@ -138,7 +138,7 @@ function getIntroState(moment: InkMoment): IntroState {
   if (moment === 'midday') {
     return {
       kicker: 'Midday reset',
-      headline: 'Do we need to move some things around?',
+      headline: `Hey ${userName}.`,
       subline: "The day has changed. Let's make the schedule honest again.",
       inputPlaceholder: 'Ask what should move, what is at risk, or how to rebalance the day...',
       icon: Sparkles,
@@ -175,7 +175,7 @@ function getIntroState(moment: InkMoment): IntroState {
 
   return {
     kicker: 'Evening plan',
-    headline: "What's the plan for tonight?",
+    headline: `Hey ${userName}.`,
     subline: 'Choose whether to close the day cleanly or keep going on purpose.',
     inputPlaceholder: 'Ask what still matters tonight, what can close, or what should move to tomorrow...',
     icon: MoonStar,
@@ -225,11 +225,13 @@ export function MorningBriefing({ onClose, onNewChat, onStreamingChange, mode = 
     dailyPlan,
     bringForward,
     addLocalTask,
+    addRitual,
     workdayEnd,
     scheduleBlocks,
     plannedTasks,
     monthlyPlan,
     scheduleTaskBlock,
+    userName,
   } = useApp();
 
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -238,6 +240,7 @@ export function MorningBriefing({ onClose, onNewChat, onStreamingChange, mode = 
   const [commitChips, setCommitChips] = useState<CommitChip[]>([]);
   const [scheduleChips, setScheduleChips] = useState<ScheduleChip[]>([]);
   const [committed, setCommitted] = useState(false);
+  const [pendingRituals, setPendingRituals] = useState<string[]>([]);
 
   // Journal state
   const journalQuestions = buildJournalQuestions(weeklyGoals);
@@ -252,7 +255,7 @@ export function MorningBriefing({ onClose, onNewChat, onStreamingChange, mode = 
   const closeTimeoutRef = useRef<number | null>(null);
   const phaseRef = useRef<Phase>('idle');
   const inkMoment = getInkMoment();
-  const introState = getIntroState(inkMoment);
+  const introState = getIntroState(inkMoment, userName);
 
   // Resolved ink mode (async — needs weekUpdatedAt from store)
   const [resolvedInkMode, setResolvedInkMode] = useState<InkMode | null>(null);
@@ -334,6 +337,12 @@ export function MorningBriefing({ onClose, onNewChat, onStreamingChange, mode = 
           setScheduleChips(chips);
           setPhase('committing');
         }
+      }
+
+      // Detect ritual suggestions — AI outputs [RITUAL] Title lines
+      const rituals = parseRitualSuggestions(content);
+      if (rituals.length > 0) {
+        setPendingRituals(rituals);
       }
     },
   });
@@ -511,14 +520,12 @@ export function MorningBriefing({ onClose, onNewChat, onStreamingChange, mode = 
   };
 
   return (
-    <div className="flex flex-col h-full w-full min-w-[280px] bg-bg-card border-l border-border-subtle">
+    <div className="relative flex flex-col h-full w-full min-w-[280px] bg-bg-card border-l border-border-subtle">
       {/* Header */}
       <div className="drag-region flex items-center justify-between" style={{ background: 'transparent', borderBottom: '0.5px solid rgba(255,255,255,0.06)', padding: '32px 22px 20px' }}>
-        <div className="pr-4">
-          <h2 className="font-display italic text-[17px] font-light text-text-emphasis">
-            Ink
-          </h2>
-          <div className="text-[10px] uppercase tracking-[0.14em] text-text-muted mt-0.5">
+        <div className="pr-4 flex items-center gap-2">
+          <Sparkles className="w-5 h-5 shrink-0 text-accent-warm/60" />
+          <div className="text-[11px] uppercase tracking-[0.14em] text-text-muted">
             {format(new Date(), 'EEEE, MMM d')}
           </div>
         </div>
@@ -543,7 +550,7 @@ export function MorningBriefing({ onClose, onNewChat, onStreamingChange, mode = 
 
       {/* Journal phase */}
       {phase === 'journal' && journalQuestions[journalStep] && (
-        <div className="flex-1 overflow-y-auto px-6 pt-12 pb-6 flex flex-col hide-scrollbar">
+        <div className="flex-1 overflow-y-auto px-6 pt-[88px] pb-6 flex flex-col hide-scrollbar">
           {/* Progress dots */}
           <div className="flex items-center gap-1.5 mb-8">
             {journalQuestions.map((_, i) => (
@@ -617,7 +624,7 @@ export function MorningBriefing({ onClose, onNewChat, onStreamingChange, mode = 
 
       {/* Messages */}
       {phase !== 'journal' && (
-      <div className="flex-1 overflow-y-auto px-6 pt-12 pb-6 flex flex-col gap-6 hide-scrollbar">
+      <div className="flex-1 overflow-y-auto px-6 pt-[88px] pb-6 flex flex-col gap-6 hide-scrollbar">
         {showIntro && (
           <InkIntroPanel
             state={introState}
@@ -644,7 +651,7 @@ export function MorningBriefing({ onClose, onNewChat, onStreamingChange, mode = 
               Morning briefing
             </div>
             <div className="mt-3 font-display italic text-[24px] font-light text-text-emphasis leading-snug">
-              Good morning.
+              {inkMoment === 'morning' ? 'Good morning.' : inkMoment === 'midday' ? `Hey ${userName}.` : `Good evening, ${userName}.`}
             </div>
           </div>
         )}
@@ -655,9 +662,6 @@ export function MorningBriefing({ onClose, onNewChat, onStreamingChange, mode = 
         {/* Streaming content */}
         {streamingContent && (
           <div className="flex gap-4">
-            <div className="w-5 h-5 mt-0.5 rounded-full bg-accent-warm/20 flex items-center justify-center shrink-0">
-              <span className="text-[9px] font-bold text-accent-warm">Ink</span>
-            </div>
             <div className="flex-1 min-w-0 pr-2">
               <div className="prose-briefing text-[15px] leading-relaxed text-text-primary">
                 <ReactMarkdown remarkPlugins={[remarkGfm]}>{streamingContent}</ReactMarkdown>
@@ -775,6 +779,36 @@ export function MorningBriefing({ onClose, onNewChat, onStreamingChange, mode = 
           </div>
         )}
 
+        {/* Ritual suggestions */}
+        {pendingRituals.length > 0 && (
+          <div className="flex flex-col gap-2 mt-2">
+            <div className="text-[10px] uppercase tracking-[0.14em] text-text-muted font-medium px-1">
+              Add as daily ritual?
+            </div>
+            {pendingRituals.map((title, i) => (
+              <div key={i} className="flex items-center gap-2 px-3 py-2 rounded-lg bg-bg-elevated/50 border border-border-subtle text-[13px]">
+                <MoonStar className="w-3.5 h-3.5 text-text-muted shrink-0" />
+                <span className="flex-1 min-w-0 truncate text-text-primary">{title}</span>
+                <button
+                  onClick={() => {
+                    addRitual(title);
+                    setPendingRituals((prev) => prev.filter((_, j) => j !== i));
+                  }}
+                  className="text-[10px] uppercase tracking-wider text-accent-warm hover:text-accent-warm/80 font-medium shrink-0 transition-colors"
+                >
+                  Add
+                </button>
+                <button
+                  onClick={() => setPendingRituals((prev) => prev.filter((_, j) => j !== i))}
+                  className="text-[10px] uppercase tracking-wider text-text-muted hover:text-text-primary font-medium shrink-0 transition-colors"
+                >
+                  Skip
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+
         {/* Committed confirmation */}
         {committed && (
           <div className="flex items-center justify-center py-6">
@@ -811,7 +845,7 @@ export function MorningBriefing({ onClose, onNewChat, onStreamingChange, mode = 
               placeholder={isStreaming ? 'Thinking...' : phase === 'interview' ? 'Answer honestly...' : showIntro ? introState.inputPlaceholder : 'Push back, add, cut, or re-scope...'}
               rows={1}
               disabled={isStreaming}
-              className="min-h-[44px] flex-1 resize-none bg-bg-elevated/60 border border-border-subtle rounded-lg px-4 py-3 text-[14px] leading-relaxed text-text-primary placeholder:text-text-muted/50 focus:outline-none focus:border-accent-warm/40 transition-colors disabled:opacity-50"
+              className="min-h-[44px] flex-1 resize-none bg-bg-elevated/60 border border-border-subtle rounded-lg px-4 py-3 text-[16px] leading-relaxed text-text-primary placeholder:text-text-muted/50 focus:outline-none focus:border-accent-warm/40 transition-colors disabled:opacity-50"
             />
             <button
               onClick={sendMessage}
@@ -859,7 +893,7 @@ function InkIntroPanel({
               <div className="mt-3 font-display text-[29px] leading-[0.98] text-text-emphasis">
                 {state.headline}
               </div>
-              <div className="mt-3 max-w-[280px] text-[13px] leading-relaxed text-text-muted">
+              <div className="mt-3 max-w-[280px] text-[14px] leading-relaxed text-text-muted">
                 {state.subline}
               </div>
             </div>
@@ -883,7 +917,7 @@ function InkIntroPanel({
                 >
                   <div>
                     <div
-                      className="text-[11px] font-medium"
+                      className="text-[14px] font-medium"
                       style={{ color: action.variant === 'warm' ? 'rgba(190,90,55,0.9)' : 'rgba(225,215,200,0.85)' }}
                     >
                       {action.label}
@@ -916,7 +950,7 @@ function InkIntroPanel({
                   }}
                 >
                   {ActionIcon ? <ActionIcon className="h-3.5 w-3.5 shrink-0" style={{ color: 'rgba(160,150,130,0.35)' }} /> : <ArrowRight className="h-3.5 w-3.5 shrink-0" style={{ color: 'rgba(160,150,130,0.35)' }} />}
-                  <div className="text-[12px] leading-snug" style={{ color: 'rgba(190,180,160,0.7)' }}>
+                  <div className="text-[14px] leading-snug" style={{ color: 'rgba(190,180,160,0.7)' }}>
                     {action.label}
                   </div>
                 </button>
@@ -947,9 +981,6 @@ function MessageBubble({ message, isFirst }: { message: ChatMessage; isFirst: bo
 
   return (
     <div className="flex gap-4 animate-fade-in">
-      <div className="w-5 h-5 mt-0.5 rounded-full bg-accent-warm/20 flex items-center justify-center shrink-0">
-        <span className="text-[9px] font-bold text-accent-warm">Ink</span>
-      </div>
       <div className="flex-1 min-w-0 pr-2 prose-briefing text-[15px] leading-[1.8] text-text-primary">
         <ReactMarkdown remarkPlugins={[remarkGfm]}>{message.content}</ReactMarkdown>
       </div>

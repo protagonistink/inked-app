@@ -192,9 +192,20 @@ export function useScheduleManager({
 
   const updateScheduleBlock = useCallback(async (blockId: string, startHour: number, startMin: number, durationMins: number) => {
     const block = scheduleBlocks.find((item) => item.id === blockId);
-    if (!block || block.readOnly || !block.linkedTaskId) return;
+    if (!block || block.readOnly) return;
+
+    // Ritual/break blocks: reposition in place (no GCal sync)
+    if (!block.linkedTaskId) {
+      setScheduleBlocks((prev) =>
+        prev
+          .map((b) => b.id === blockId ? { ...b, startHour, startMin, durationMins } : b)
+          .sort((a, b) => a.startHour * 60 + a.startMin - (b.startHour * 60 + b.startMin))
+      );
+      return;
+    }
+
     await scheduleTaskBlock(block.linkedTaskId, startHour, startMin, durationMins);
-  }, [scheduleBlocks, scheduleTaskBlock]);
+  }, [scheduleBlocks, scheduleTaskBlock, setScheduleBlocks]);
 
   const clearFocusBlocks = useCallback(async () => {
     const today = getToday();

@@ -2,7 +2,7 @@ import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react'
 import { format } from 'date-fns';
 import { DndProvider, useDragLayer } from 'react-dnd';
 import { HTML5Backend } from 'react-dnd-html5-backend';
-import { Lock, Moon, Sparkles } from 'lucide-react';
+import { Lock, Moon, Sparkles, Sun } from 'lucide-react';
 import { cn } from './lib/utils';
 import { ThemeProvider } from './context/ThemeContext';
 import { AppProvider, useApp } from './context/AppContext';
@@ -36,6 +36,8 @@ function AppLayout() {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [inkStreaming, setInkStreaming] = useState(false);
   const [layoutPhase, setLayoutPhase] = useState<LayoutPhase>('active');
+  const [isEveningReflection, setIsEveningReflection] = useState(false);
+  const [pendingDayReset, setPendingDayReset] = useState(false);
   const { isFocus } = useTheme();
   const {
     activeView,
@@ -49,6 +51,8 @@ function AppLayout() {
     unlockDay,
     showEndOfDayPrompt,
     dismissEndOfDayPrompt,
+    showStartOfDayPrompt,
+    dismissStartOfDayPrompt,
     resetDay,
   } = useApp();
 
@@ -89,10 +93,15 @@ function AppLayout() {
   // Weekly planning wizard is opened manually from the sidebar — no auto-open
 
   const closeBriefing = useCallback(() => {
+    if (pendingDayReset) {
+      void resetDay();
+      setPendingDayReset(false);
+    }
     setShowBriefing(false);
     setLayoutPhase('active');
+    setIsEveningReflection(false);
     window.api.store.set(`briefing.dismissed.${format(new Date(), 'yyyy-MM-dd')}`, true);
-  }, []);
+  }, [pendingDayReset, resetDay]);
 
   // Escape key: close Ink overlay or exit focus lock
   useEffect(() => {
@@ -131,22 +140,43 @@ function AppLayout() {
             onSettingsClick={() => setShowSettings(true)}
             onShowBriefing={() => {}}
           />
-          {/* Ink panel — inline, fills main area */}
-          <div className="flex-1 min-w-0 h-full overflow-hidden" style={{ flex: '1.2 1 0%' }}>
-            <Suspense fallback={null}>
-              <MorningBriefing
-                key={briefingSessionId}
-                mode={briefingMode}
-                onClose={closeBriefing}
-                onNewChat={() => setBriefingSessionId((value) => value + 1)}
-                onStreamingChange={setInkStreaming}
-              />
-            </Suspense>
-          </div>
-          {/* Compact Timeline — day's calendar at a glance */}
-          <div className="h-full overflow-hidden border-l border-border-subtle" style={{ flex: '0.8 1 0%', minWidth: 280 }}>
-            <Timeline />
-          </div>
+          {isEveningReflection ? (
+            <>
+              {/* Evening: Today's Plan left, Ink right — review what you did */}
+              <div className="flex-1 min-w-0 h-full overflow-hidden border-r border-border-subtle">
+                <TodaysFlow />
+              </div>
+              <div className="h-full overflow-hidden" style={{ flex: '1 1 0%', minWidth: 320 }}>
+                <Suspense fallback={null}>
+                  <MorningBriefing
+                    key={briefingSessionId}
+                    mode={briefingMode}
+                    onClose={closeBriefing}
+                    onNewChat={() => setBriefingSessionId((value) => value + 1)}
+                    onStreamingChange={setInkStreaming}
+                  />
+                </Suspense>
+              </div>
+            </>
+          ) : (
+            <>
+              {/* Morning: Ink left, Timeline right */}
+              <div className="flex-1 min-w-0 h-full overflow-hidden" style={{ flex: '1.2 1 0%' }}>
+                <Suspense fallback={null}>
+                  <MorningBriefing
+                    key={briefingSessionId}
+                    mode={briefingMode}
+                    onClose={closeBriefing}
+                    onNewChat={() => setBriefingSessionId((value) => value + 1)}
+                    onStreamingChange={setInkStreaming}
+                  />
+                </Suspense>
+              </div>
+              <div className="h-full overflow-hidden border-l border-border-subtle" style={{ flex: '0.8 1 0%', minWidth: 280 }}>
+                <Timeline />
+              </div>
+            </>
+          )}
         </>
       ) : (
         <>
@@ -156,6 +186,7 @@ function AppLayout() {
             onToggleCollapse={() => setSidebarCollapsed((value) => !value)}
             onSettingsClick={() => setShowSettings(true)}
             onShowBriefing={() => { setBriefingMode('briefing'); setShowBriefing(true); }}
+            onShowEveningReflection={() => { setBriefingMode('chat'); setShowBriefing(true); setIsEveningReflection(true); setLayoutPhase('opening'); }}
           />
           {/* Content area — shrinks when Ink opens via margin-right */}
           <div
@@ -296,6 +327,32 @@ function AppLayout() {
           </div>
         </div>
       )}
+      {showStartOfDayPrompt && (
+        <div className="absolute inset-0 z-50 flex items-center justify-center bg-bg/80 backdrop-blur-sm">
+          <div className="flex flex-col items-center gap-6 rounded-lg border border-border bg-bg-card px-10 py-8 shadow-2xl max-w-sm w-full mx-6">
+            <div className="flex flex-col items-center gap-2 text-center">
+              <Sun className="w-5 h-5 text-accent-warm/70 mb-1" />
+              <p className="font-display text-[22px] text-text-emphasis leading-snug">Ready to start?</p>
+              <p className="text-[12px] text-text-muted">Your workday begin time has arrived.</p>
+            </div>
+            <div className="flex flex-col gap-2 w-full">
+              <button
+                onClick={dismissStartOfDayPrompt}
+                className="w-full px-5 py-2.5 bg-accent-warm/10 hover:bg-accent-warm text-accent-warm hover:text-[#FAFAFA] text-[11px] uppercase tracking-[0.18em] font-medium transition-all duration-200 flex items-center justify-center gap-2"
+              >
+                <Sun className="w-3 h-3" />
+                Let's Go
+              </button>
+              <button
+                onClick={dismissStartOfDayPrompt}
+                className="w-full px-5 py-2.5 text-text-muted hover:text-text-primary text-[11px] uppercase tracking-[0.18em] font-medium transition-colors duration-200"
+              >
+                Not Yet
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       {showEndOfDayPrompt && (
         <div className="absolute inset-0 z-50 flex items-center justify-center bg-bg/80 backdrop-blur-sm">
           <div className="flex flex-col items-center gap-6 rounded-lg border border-border bg-bg-card px-10 py-8 shadow-2xl max-w-sm w-full mx-6">
@@ -306,14 +363,14 @@ function AppLayout() {
             </div>
             <div className="flex flex-col gap-2 w-full">
               <button
-                onClick={() => { void resetDay(); dismissEndOfDayPrompt(); }}
+                onClick={() => { setPendingDayReset(true); dismissEndOfDayPrompt(); dismissStartOfDayPrompt(); setBriefingMode('chat'); setShowBriefing(true); setIsEveningReflection(true); setLayoutPhase('opening'); }}
                 className="w-full px-5 py-2.5 bg-accent-warm/10 hover:bg-accent-warm text-accent-warm hover:text-[#FAFAFA] text-[11px] uppercase tracking-[0.18em] font-medium transition-all duration-200 flex items-center justify-center gap-2"
               >
                 <Moon className="w-3 h-3" />
                 End the Day
               </button>
               <button
-                onClick={dismissEndOfDayPrompt}
+                onClick={() => { dismissEndOfDayPrompt(); dismissStartOfDayPrompt(); }}
                 className="w-full px-5 py-2.5 text-text-muted hover:text-text-primary text-[11px] uppercase tracking-[0.18em] font-medium transition-colors duration-200"
               >
                 Keep Going

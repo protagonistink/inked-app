@@ -4,12 +4,8 @@ export function useModifierKey(): boolean {
   const [held, setHeld] = useState(false);
 
   useEffect(() => {
-    const down = (e: KeyboardEvent) => {
-      if (e.metaKey || e.shiftKey || e.altKey) setHeld(true);
-    };
-    const up = (e: KeyboardEvent) => {
-      if (!e.metaKey && !e.shiftKey && !e.altKey) setHeld(false);
-    };
+    const down = (e: KeyboardEvent) => { if (e.altKey) setHeld(true); };
+    const up = (e: KeyboardEvent) => { if (!e.altKey) setHeld(false); };
     window.addEventListener('keydown', down);
     window.addEventListener('keyup', up);
     return () => {

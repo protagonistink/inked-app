@@ -1,6 +1,6 @@
 import { useCallback, type Dispatch, type SetStateAction } from 'react';
-import type { AsanaTask, GCalEvent, PlannedTask, ScheduleBlock } from '@/types';
-import { asPlannedTask, eventToBlock, getToday, isDueSoon } from '@/lib/planner';
+import type { AsanaTask, DailyRitual, GCalEvent, PlannedTask, ScheduleBlock } from '@/types';
+import { asPlannedTask, eventToBlock, getToday, mergeScheduleBlocksWithRituals } from '@/lib/planner';
 
 interface SyncStatus {
   asana: string | null;
@@ -12,20 +12,24 @@ interface ExternalPlannerSyncOptions {
   setPlannedTasks: Dispatch<SetStateAction<PlannedTask[]>>;
   setScheduleBlocks: Dispatch<SetStateAction<ScheduleBlock[]>>;
   setSyncStatus: Dispatch<SetStateAction<SyncStatus>>;
+  rituals: DailyRitual[];
+  workdayStart: { hour: number; min: number };
 }
 
 export function useExternalPlannerSync({
   setPlannedTasks,
   setScheduleBlocks,
   setSyncStatus,
+  rituals,
+  workdayStart,
 }: ExternalPlannerSyncOptions) {
   const hydrateCalendar = useCallback((events: GCalEvent[], tasks: PlannedTask[]) => {
     const eventBlocks = events
       .map((event) => eventToBlock(event, tasks))
       .filter((block): block is ScheduleBlock => block !== null);
 
-    setScheduleBlocks(eventBlocks.sort((a, b) => (a.startHour * 60 + a.startMin) - (b.startHour * 60 + b.startMin)));
-  }, [setScheduleBlocks]);
+    setScheduleBlocks(() => mergeScheduleBlocksWithRituals(eventBlocks, rituals, workdayStart));
+  }, [rituals, setScheduleBlocks, workdayStart]);
 
   const refreshExternalData = useCallback(async () => {
     setSyncStatus({ asana: null, gcal: null, loading: true });
@@ -39,7 +43,7 @@ export function useExternalPlannerSync({
       let nextTasks = [...prev];
 
       if (asanaResult.status === 'fulfilled' && asanaResult.value.success && asanaResult.value.data) {
-        const asanaTasks = asanaResult.value.data.filter((task: AsanaTask) => !task.completed && isDueSoon(task));
+        const asanaTasks = asanaResult.value.data.filter((task: AsanaTask) => !task.completed);
 
         nextTasks = nextTasks.reduce<PlannedTask[]>((acc, task) => {
           if (task.source === 'asana' && task.sourceId && !asanaTasks.some((incoming) => incoming.gid === task.sourceId)) {

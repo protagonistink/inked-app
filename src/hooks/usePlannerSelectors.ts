@@ -46,20 +46,37 @@ export function usePlannerSelectors({
     };
   }, []);
 
+  const taskStatusById = useMemo(() => {
+    const statuses = new Map<string, PlannedTask['status']>();
+    for (const task of plannedTasks) {
+      statuses.set(task.id, task.status);
+    }
+    return statuses;
+  }, [plannedTasks]);
+
   const currentBlock = useMemo(() => {
     return scheduleBlocks.find((block) => {
       const start = block.startHour * 60 + block.startMin;
       const end = start + block.durationMins;
-      return block.kind === 'focus' && currentMinute >= start && currentMinute < end;
+      return (
+        block.kind === 'focus' &&
+        currentMinute >= start &&
+        currentMinute < end &&
+        (!block.linkedTaskId || taskStatusById.get(block.linkedTaskId) !== 'done')
+      );
     }) || null;
-  }, [currentMinute, scheduleBlocks]);
+  }, [currentMinute, scheduleBlocks, taskStatusById]);
 
   const nextBlock = useMemo(() => {
     return scheduleBlocks.find((block) => {
       const start = block.startHour * 60 + block.startMin;
-      return block.kind === 'focus' && start > currentMinute;
+      return (
+        block.kind === 'focus' &&
+        start > currentMinute &&
+        (!block.linkedTaskId || taskStatusById.get(block.linkedTaskId) !== 'done')
+      );
     }) || null;
-  }, [currentMinute, scheduleBlocks]);
+  }, [currentMinute, scheduleBlocks, taskStatusById]);
 
   const currentTask = useMemo(() => {
     if (currentBlock?.linkedTaskId) {
@@ -70,7 +87,7 @@ export function usePlannerSelectors({
 
   const dayTasks = useMemo(() => plannedTasks.filter((task) => (
     dailyPlan.committedTaskIds.includes(task.id) &&
-    (task.status === 'committed' || task.status === 'scheduled') &&
+    (task.status === 'committed' || task.status === 'scheduled' || task.status === 'done') &&
     (!task.parentId || !dailyPlan.committedTaskIds.includes(task.parentId))
   )), [dailyPlan.committedTaskIds, plannedTasks]);
 

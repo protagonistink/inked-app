@@ -29,7 +29,7 @@ export function CommandPalette() {
     const [query, setQuery] = useState('');
     const [selectedIndex, setSelectedIndex] = useState(0);
     const { mode, setMode } = useTheme();
-    const { activeView, setActiveView, toggleTask, committedTasks, selectedInboxId, bringForward } = useApp();
+    const { activeView, setActiveView, toggleTask, committedTasks, selectedInboxId, bringForward, lockDay, unlockDay } = useApp();
     const menuRef = useRef<HTMLDivElement>(null);
     const inputRef = useRef<HTMLInputElement>(null);
 
@@ -40,9 +40,9 @@ export function CommandPalette() {
         { id: 'view-archive', title: 'Open Archive', icon: Archive, category: 'Navigation', action: () => setActiveView('archive') },
 
         // Themes
-        { id: 'theme-dark', title: 'Dark Mode', icon: Moon, category: 'Theme', action: () => setMode('dark') },
-        { id: 'theme-light', title: 'Light Mode', icon: Sun, category: 'Theme', action: () => setMode('light') },
-        { id: 'theme-focus', title: 'Quiet Focus', icon: Layout, category: 'Theme', action: () => setMode('focus') },
+        { id: 'theme-dark', title: 'Dark Mode', icon: Moon, category: 'Theme', action: () => { unlockDay(); setMode('dark'); } },
+        { id: 'theme-light', title: 'Light Mode', icon: Sun, category: 'Theme', action: () => { unlockDay(); setMode('light'); } },
+        { id: 'theme-focus', title: 'Quiet Focus', icon: Layout, category: 'Theme', action: () => { lockDay(); setMode('focus'); } },
 
         // Actions
         { id: 'action-done', title: 'Mark active task done', icon: CheckCircle2, category: 'Action', action: () => { const active = committedTasks.find(t => t.active && t.status !== 'done'); if (active) void toggleTask(active.id); } },

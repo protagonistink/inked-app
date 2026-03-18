@@ -1,5 +1,5 @@
-appId: com.protagonistink.threadline
-productName: Threadline
+appId: com.protagonistink.inked
+productName: Inked
 directories:
   buildResources: build
   output: release

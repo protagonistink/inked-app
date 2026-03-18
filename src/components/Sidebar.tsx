@@ -11,6 +11,7 @@ import {
   ChevronsLeft,
   ChevronsRight,
   Sunrise,
+  MoonStar,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useTheme, type ThemeMode } from '@/context/ThemeContext';
@@ -97,12 +98,13 @@ function ThemeSwitcher({ collapsed }: { collapsed: boolean }) {
 interface SidebarProps {
   onSettingsClick?: () => void;
   onShowBriefing?: () => void;
+  onShowEveningReflection?: () => void;
   collapsed: boolean;
   onToggleCollapse: () => void;
 }
 
 
-export function Sidebar({ onSettingsClick, onShowBriefing, collapsed, onToggleCollapse }: SidebarProps) {
+export function Sidebar({ onSettingsClick, onShowBriefing, onShowEveningReflection, collapsed, onToggleCollapse }: SidebarProps) {
   const { isLight } = useTheme();
   const { activeView, setActiveView, openWeeklyPlanning, openMonthlyPlanning } = useApp();
 
@@ -161,6 +163,17 @@ export function Sidebar({ onSettingsClick, onShowBriefing, collapsed, onToggleCo
           >
             <Sunrise className="w-3.5 h-3.5 shrink-0" />
             <span className={cn('transition-opacity duration-150 whitespace-nowrap overflow-hidden', collapsed ? 'opacity-0 w-0' : 'opacity-100')}>Morning Briefing</span>
+          </button>
+          <button
+            onClick={onShowEveningReflection}
+            title={collapsed ? 'Evening Reflection' : undefined}
+            className={cn(
+              'no-drag w-full flex items-center rounded-md text-[12px] text-text-muted hover:text-accent-warm hover:bg-bg-card/60 transition-all border border-dashed border-border-subtle',
+              collapsed ? 'justify-center px-1 py-2' : 'gap-3 px-3 py-1.5'
+            )}
+          >
+            <MoonStar className="w-3.5 h-3.5 shrink-0" />
+            <span className={cn('transition-opacity duration-150 whitespace-nowrap overflow-hidden', collapsed ? 'opacity-0 w-0' : 'opacity-100')}>Evening Reflection</span>
           </button>
           <button
             onClick={openWeeklyPlanning}

@@ -392,13 +392,20 @@ After your briefing analysis, if there are committed tasks or tasks you are reco
 \`\`\`
 
 Rules:
-- Use exact task titles from the committed or Asana task lists
+- Use exact task titles from the committed or Asana task lists when scheduling existing tasks
+- You can include new tasks by inventing a title — they'll be created automatically when the user commits
 - Respect existing calendar events — never double-book
 - Honor peak energy window (${ctx.userPhysics?.peakEnergyWindow ?? 'morning'}) for deep work
 - Use the ideal focus block length (${ctx.userPhysics?.focusBlockLength ?? 45}min) as default duration
 - The schedule block doesn't count against the word limit
 - If the user asks to replan or move items, output a new schedule block with the updated times
 ` : ''}
+## ADDING TASKS
+If the user asks you to add a task or suggests one should exist, include it as a bullet in your reply (e.g., "- Write project proposal"). When the user clicks "Ready to commit?", bullets matching existing tasks commit them; unmatched bullets create new tasks automatically.
+
+## ADDING DAILY RITUALS
+If the user asks you to add something as a recurring daily item, habit, or ritual (e.g., "add LinkedIn post as a daily ritual"), include a line in your reply using this exact format: [RITUAL] Title (e.g., "[RITUAL] LinkedIn post"). The app will prompt them to confirm adding it to their daily rituals.
+
 ## RESPONSE FORMAT
 - Hard limit: ${ctx.inkMode === 'midday' ? '120' : ctx.inkMode === 'evening' ? '180' : '200'} words total. No exceptions.
 - Bullets for lists. Paragraphs max 2 sentences.

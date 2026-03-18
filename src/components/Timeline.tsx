@@ -1,10 +1,11 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
-import { X, GripVertical, Play } from 'lucide-react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { X, GripVertical, Play, Check, RefreshCw } from 'lucide-react';
 import { useDrag } from 'react-dnd';
 import { differenceInCalendarDays, parseISO } from 'date-fns';
 import { useDrop } from 'react-dnd';
 import { getEmptyImage } from 'react-dnd-html5-backend';
 import { cn, formatRoundedHours } from '@/lib/utils';
+import { CALENDAR_GRID_SNAP_MINS, planFocusCascade, snapToCalendarGrid } from '@/lib/planner';
 import { useTheme } from '@/context/ThemeContext';
 import { useApp } from '@/context/AppContext';
 import { DragTypes, type DragItem } from '@/hooks/useDragDrop';
@@ -13,23 +14,14 @@ import type { PomodoroState, ScheduleBlock } from '@/types';
 import { GCalIcon } from './AppIcons';
 
 const HOUR_HEIGHT = 96;
-const START_HOUR = 8;
-const END_HOUR = 20;
-const GRID_SNAP_MINS = 5;
-const HOURS = Array.from({ length: END_HOUR - START_HOUR }, (_, i) => START_HOUR + i);
-const DAY_START_MINS = START_HOUR * 60;
-const DAY_END_MINS = END_HOUR * 60;
+const GRID_SNAP_MINS = CALENDAR_GRID_SNAP_MINS;
 
-function snapMinutes(totalMinutes: number): number {
-  return Math.round(totalMinutes / GRID_SNAP_MINS) * GRID_SNAP_MINS;
+function clampMinutes(totalMinutes: number, dayStartMins: number, dayEndMins: number, maxDurationMins = 0): number {
+  return Math.min(Math.max(totalMinutes, dayStartMins), dayEndMins - maxDurationMins);
 }
 
-function clampMinutes(totalMinutes: number, maxDurationMins = 0): number {
-  return Math.min(Math.max(totalMinutes, DAY_START_MINS), DAY_END_MINS - maxDurationMins);
-}
-
-function timeToTop(totalMinutes: number): number {
-  return ((totalMinutes - DAY_START_MINS) / 60) * HOUR_HEIGHT;
+function timeToTop(totalMinutes: number, dayStartMins: number): number {
+  return ((totalMinutes - dayStartMins) / 60) * HOUR_HEIGHT;
 }
 
 function formatTime(h: number, m: number): string {
@@ -37,6 +29,12 @@ function formatTime(h: number, m: number): string {
   const hour = h > 12 ? h - 12 : h === 0 ? 12 : h;
   const min = m.toString().padStart(2, '0');
   return `${hour}:${min} ${ampm}`;
+}
+
+function formatTimeShort(h: number, m: number): string {
+  const ampm = h >= 12 ? 'PM' : 'AM';
+  const hour = h > 12 ? h - 12 : h === 0 ? 12 : h;
+  return m === 0 ? `${hour} ${ampm}` : `${hour}:${m.toString().padStart(2, '0')} ${ampm}`;
 }
 
 function getStepMins(durationMins: number): number {
@@ -49,7 +47,7 @@ function FocusSetMeter({ durationMins }: { durationMins: number }) {
   const setCount = Math.max(1, Math.round(durationMins / 25));
 
   return (
-    <div className="flex items-center gap-2 rounded-full border border-accent-warm/18 bg-black/15 px-2.5 py-1 text-[10px] uppercase tracking-[0.18em] text-text-muted/90 backdrop-blur-sm focus-fade-meta">
+    <div className="flex items-center gap-2 rounded-full border border-accent-warm/18 bg-black/15 px-2.5 py-1 text-[10px] uppercase tracking-[0.18em] text-text-muted/90 focus-fade-meta">
       <div className="flex items-center gap-1">
         {Array.from({ length: setCount }).map((_, index) => (
           <span
@@ -70,22 +68,32 @@ function BlockCard({
   block,
   onRemove,
   onUpdate,
+  onUpdateDuration,
+  resolvePlacement,
   stagger = 0,
   isNow = false,
   actualMins = 0,
+  dayStartMins,
+  dayEndMins,
 }: {
   block: ScheduleBlock;
   onRemove: () => void;
   onUpdate: (startHour: number, startMin: number, durationMins: number) => void;
+  onUpdateDuration?: (durationMins: number) => void;
+  resolvePlacement: (rawMinutes: number, durationMins: number, targetBlockId?: string) => { startHour: number; startMin: number };
   stagger?: number;
   isNow?: boolean;
   actualMins?: number;
+  dayStartMins: number;
+  dayEndMins: number;
 }) {
   const { isLight, isFocus } = useTheme();
-  const { setActiveTask } = useApp();
-  const [{ isDragging }, , previewRef] = useDrag<DragItem, unknown, { isDragging: boolean }>({
+  const { plannedTasks, setActiveTask, toggleTask } = useApp();
+  const linkedTask = block.linkedTaskId ? plannedTasks.find((task) => task.id === block.linkedTaskId) : null;
+  const isDone = linkedTask?.status === 'done';
+  const [{ isDragging }, dragRef, previewRef] = useDrag<DragItem, unknown, { isDragging: boolean }>({
     type: DragTypes.BLOCK,
-    canDrag: !block.readOnly && Boolean(block.linkedTaskId),
+    canDrag: !block.readOnly && !isDone && Boolean(block.linkedTaskId),
     item: {
       id: block.linkedTaskId || block.id,
       title: block.title,
@@ -102,13 +110,15 @@ function BlockCard({
   const [draft, setDraft] = useState<{ startHour: number; startMin: number; durationMins: number } | null>(null);
   const draftRef = useRef<{ startHour: number; startMin: number; durationMins: number } | null>(null);
   const didDragRef = useRef(false);
-  const top = timeToTop(((draft?.startHour ?? block.startHour) * 60) + (draft?.startMin ?? block.startMin));
+  const top = timeToTop(((draft?.startHour ?? block.startHour) * 60) + (draft?.startMin ?? block.startMin), dayStartMins);
   const height = ((draft?.durationMins ?? block.durationMins) / 60) * HOUR_HEIGHT;
   const isShortBlock = height < 110;
   const actualLabel = actualMins > 0 ? formatRoundedHours(actualMins, true) : null;
 
   function beginDrag(event: React.MouseEvent<HTMLDivElement>) {
-    if (block.readOnly) return;
+    if (block.readOnly || isDone) return;
+    const target = event.target as HTMLElement;
+    if (target.closest('button')) return;
     event.preventDefault();
     didDragRef.current = false;
     const startY = event.clientY;
@@ -118,10 +128,10 @@ function BlockCard({
       const deltaY = moveEvent.clientY - startY;
       if (Math.abs(deltaY) > 4) didDragRef.current = true;
       const rawMinutes = baseMinutes + (deltaY / HOUR_HEIGHT) * 60;
-      const nextMinutes = clampMinutes(snapMinutes(rawMinutes), block.durationMins);
+      const placement = resolvePlacement(rawMinutes, block.durationMins, block.id);
       const nextDraft = {
-        startHour: Math.floor(nextMinutes / 60),
-        startMin: nextMinutes % 60,
+        startHour: placement.startHour,
+        startMin: placement.startMin,
         durationMins: block.durationMins,
       };
       draftRef.current = nextDraft;
@@ -141,7 +151,7 @@ function BlockCard({
   }
 
   function beginResize(event: React.MouseEvent<HTMLDivElement>) {
-    if (block.readOnly) return;
+    if (block.readOnly || isDone) return;
     event.preventDefault();
     event.stopPropagation();
     const startY = event.clientY;
@@ -152,10 +162,11 @@ function BlockCard({
       const pixelsPerSnap = HOUR_HEIGHT * (GRID_SNAP_MINS / 60);
       const step = Math.round(deltaY / pixelsPerSnap) * GRID_SNAP_MINS;
       const nextDuration = Math.max(GRID_SNAP_MINS, baseDuration + step);
-      const maxDuration = DAY_END_MINS - (block.startHour * 60 + block.startMin);
+      const maxDuration = dayEndMins - (block.startHour * 60 + block.startMin);
+      const placement = resolvePlacement(block.startHour * 60 + block.startMin, Math.min(nextDuration, maxDuration), block.id);
       const nextDraft = {
-        startHour: block.startHour,
-        startMin: block.startMin,
+        startHour: placement.startHour,
+        startMin: placement.startMin,
         durationMins: Math.min(nextDuration, maxDuration),
       };
       draftRef.current = nextDraft;
@@ -175,7 +186,7 @@ function BlockCard({
   }
 
   function startFocus(event: React.MouseEvent<HTMLButtonElement>) {
-    if (!block.linkedTaskId || block.readOnly) return;
+    if (!block.linkedTaskId || block.readOnly || isDone) return;
     event.stopPropagation();
     setActiveTask(block.linkedTaskId);
     void window.api.window.showPomodoro();
@@ -187,11 +198,17 @@ function BlockCard({
     if (didDragRef.current) { didDragRef.current = false; return; }
     const target = e.target as HTMLElement;
     if (target.closest('button')) return;
-    if (!block.linkedTaskId || block.readOnly) return;
+    if (!block.linkedTaskId || block.readOnly || isDone) return;
     setActiveTask(block.linkedTaskId);
     void window.api.window.showPomodoro();
     void window.api.pomodoro.start(block.linkedTaskId, block.title);
     void window.api.window.activate();
+  }
+
+  function handleToggleTask(event: React.MouseEvent<HTMLButtonElement>) {
+    if (!block.linkedTaskId || block.readOnly) return;
+    event.stopPropagation();
+    void toggleTask(block.linkedTaskId);
   }
 
   return (
@@ -200,34 +217,55 @@ function BlockCard({
       onMouseDown={beginDrag}
       onClick={handleClick}
       className={cn(
-        'editorial-card animate-fade-in absolute left-4 right-4 overflow-hidden rounded-[8px] p-4 flex flex-col gap-1.5 transition-all duration-300 group/block shadow-[0_4px_12px_rgba(0,0,0,0.5)]',
+        'editorial-card animate-fade-in absolute left-4 right-4 overflow-hidden rounded-[8px] p-4 flex flex-col gap-1.5 transition-all duration-300 group/block',
         isFocus && block.kind !== 'hard' && 'focus-block-card',
-        block.kind === 'hard'
+        block.kind === 'break'
           ? isLight
-            ? 'shadow-sm'
-            : 'backdrop-blur-md'
-          : isLight
-            ? 'border-l-[3px] border-l-accent-warm shadow-sm'
-            : 'border-l-[3px] border-l-accent-warm/60 shadow-[0_0_24px_rgba(200,60,47,0.04)]',
+            ? 'border-l-[3px] border-l-text-muted/40 opacity-75'
+            : 'border-l-[3px] border-l-text-muted/30 opacity-70'
+          : block.kind !== 'hard'
+            ? isLight
+              ? 'border-l-[3px] border-l-accent-warm'
+              : 'border-l-[3px] border-l-accent-warm/60'
+            : '',
         stagger === 1 && 'stagger-2',
         stagger === 2 && 'stagger-3',
         stagger === 3 && 'stagger-4',
-        isDragging && 'opacity-25 scale-[0.97] rotate-[1deg]',
-        isNow && !isDragging && 'ring-1 ring-active/40 shadow-[0_0_20px_rgba(200,60,47,0.12)]'
+        isDragging && 'opacity-30 scale-[0.98]',
+        isDone && 'opacity-70 saturate-[0.8]',
+        isNow && !isDragging && 'ring-1 ring-active/40'
       )}
       style={{ top: `${top}px`, height: `${height}px` }}
     >
-      {!block.readOnly && block.linkedTaskId && (
+      {!block.readOnly && block.linkedTaskId && !isDone && (
         <button
           onMouseDown={(event) => {
             event.preventDefault();
             event.stopPropagation();
           }}
           onClick={startFocus}
-          className="absolute top-2 right-9 p-1 rounded-md text-text-muted hover:text-accent-warm hover:bg-bg-card opacity-0 group-hover/block:opacity-100 transition-all"
+          className="absolute top-2 right-16 rounded-md bg-black/15 p-1 text-text-muted/80 hover:text-accent-warm hover:bg-bg-card opacity-100 md:opacity-70 md:group-hover/block:opacity-100 transition-all"
           title="Start focus"
         >
           <Play className="w-3 h-3 fill-current" />
+        </button>
+      )}
+      {!block.readOnly && block.linkedTaskId && (
+        <button
+          onMouseDown={(event) => {
+            event.preventDefault();
+            event.stopPropagation();
+          }}
+          onClick={handleToggleTask}
+          className={cn(
+            'absolute top-2 right-9 rounded-md p-1 transition-all',
+            isDone
+              ? 'bg-accent-warm/18 text-accent-warm opacity-100'
+              : 'bg-black/15 text-text-muted/80 opacity-100 md:opacity-70 md:group-hover/block:opacity-100 hover:text-text-primary hover:bg-bg-card'
+          )}
+          title={isDone ? 'Mark incomplete' : 'Mark done'}
+        >
+          <Check className="w-3 h-3" />
         </button>
       )}
       {!block.readOnly && (
@@ -240,6 +278,7 @@ function BlockCard({
             e.stopPropagation();
             onRemove();
           }}
+          title="Remove from schedule"
           className="absolute top-2 right-2 p-1 rounded-md text-text-muted hover:text-text-primary hover:bg-bg-card opacity-0 group-hover/block:opacity-100 transition-all"
         >
           <X className="w-3 h-3" />
@@ -247,20 +286,24 @@ function BlockCard({
       )}
 
       <div className="relative z-10 flex items-start gap-2 pr-6">
-        {!block.readOnly && (
-          <button
-            onMouseDown={(event) => event.preventDefault()}
-            className={cn(
-              'mt-0.5 -ml-1 rounded-md text-text-muted hover:text-text-primary hover:bg-bg-card cursor-grab active:cursor-grabbing transition-all',
+        {!block.readOnly && !isDone && (
+        <button
+          ref={dragRef}
+          onMouseDown={(event) => {
+            event.preventDefault();
+            event.stopPropagation();
+          }}
+          className={cn(
+              'mt-0.5 -ml-1 rounded-md text-text-muted/80 hover:text-text-primary hover:bg-bg-card cursor-grab active:cursor-grabbing transition-all',
               isShortBlock ? 'p-1' : 'px-1.5 py-1 flex items-center gap-1.5'
             )}
             title="Drag back to commit list"
-          >
+        >
             <GripVertical className="w-3 h-3" />
             {!isShortBlock && <span className="text-[10px] uppercase tracking-[0.14em]">Return</span>}
           </button>
         )}
-        <h4 className="text-[13px] font-medium text-text-primary truncate focus-editorial">{block.title}</h4>
+        <h4 className={cn('text-[13px] font-medium truncate focus-editorial', isDone ? 'text-text-muted line-through' : 'text-text-primary')}>{block.title}</h4>
       </div>
       <div className="relative z-10 text-[10px] font-mono text-text-muted whitespace-nowrap focus-fade-meta">
         {formatTime(block.startHour, block.startMin)} - {formatTime(
@@ -272,17 +315,48 @@ function BlockCard({
         <span className="flex items-center gap-1.5">
           {block.kind === 'hard' ? (
             <GCalIcon className="w-4 h-4 shrink-0 text-accent-warm/40" />
+          ) : block.kind === 'break' ? (
+            'ritual'
           ) : (
             'focus block'
           )}
         </span>
+        {isDone && (
+          <span className="flex items-center gap-1 rounded-full border border-white/6 bg-black/15 px-2 py-0.5 normal-case tracking-normal text-text-muted/90">
+            <Check className="h-3 w-3" />
+            done
+          </span>
+        )}
         {actualLabel && block.kind === 'focus' && (
           <span className="rounded-full border border-white/6 bg-black/15 px-2 py-0.5 normal-case tracking-normal text-text-muted/90">
             {actualLabel} worked
           </span>
         )}
       </div>
-      {!block.readOnly && block.durationMins >= 15 && (() => {
+      {onUpdateDuration && !isDone && block.durationMins >= 15 && (
+        <div
+          onMouseDown={(e) => e.stopPropagation()}
+          className="absolute bottom-4 left-0 right-0 flex items-center justify-center gap-2 opacity-0 group-hover/block:opacity-100 transition-opacity z-10"
+        >
+          <button
+            onClick={(e) => { e.stopPropagation(); onUpdateDuration(Math.max(15, block.durationMins - getStepMins(block.durationMins))); }}
+            disabled={block.durationMins <= 15}
+            className="text-[12px] text-text-muted hover:text-text-primary transition-colors px-1 disabled:opacity-30"
+          >
+            –
+          </button>
+          <span className="rounded-full border border-white/10 bg-black/15 px-2.5 py-1 text-[10px] uppercase tracking-[0.18em] text-text-muted/90">
+            {block.durationMins} min
+          </span>
+          <button
+            onClick={(e) => { e.stopPropagation(); onUpdateDuration(block.durationMins + getStepMins(block.durationMins)); }}
+            className="text-[12px] text-text-muted hover:text-text-primary transition-colors px-1"
+          >
+            +
+          </button>
+        </div>
+      )}
+      {!block.readOnly && !isDone && block.linkedTaskId && block.durationMins >= 15 && (() => {
         return (
           <div
             onMouseDown={(e) => e.stopPropagation()}
@@ -305,7 +379,7 @@ function BlockCard({
           </div>
         );
       })()}
-      {!block.readOnly && (
+      {!block.readOnly && !isDone && (
         <div
           onMouseDown={beginResize}
           className="absolute left-3 right-3 bottom-1 h-2 cursor-row-resize rounded-full bg-accent-warm/20 opacity-0 group-hover/block:opacity-100 transition-opacity"
@@ -315,7 +389,13 @@ function BlockCard({
   );
 }
 
-function CurrentTimeIndicator() {
+function CurrentTimeIndicator({
+  dayStartMins,
+  dayEndMins,
+}: {
+  dayStartMins: number;
+  dayEndMins: number;
+}) {
   const [now, setNow] = useState(new Date());
 
   useEffect(() => {
@@ -325,9 +405,10 @@ function CurrentTimeIndicator() {
 
   const currentHour = now.getHours();
   const currentMin = now.getMinutes();
-  if (currentHour < START_HOUR || currentHour >= END_HOUR) return null;
+  const currentMinutes = currentHour * 60 + currentMin;
+  if (currentMinutes < dayStartMins || currentMinutes >= dayEndMins) return null;
 
-  const top = (currentHour - START_HOUR) * HOUR_HEIGHT + (currentMin / 60) * HOUR_HEIGHT;
+  const top = timeToTop(currentMinutes, dayStartMins);
 
   return (
     <div className="absolute left-0 right-0 flex items-center z-10 pointer-events-none" style={{ top: `${top}px` }} id="now-indicator">
@@ -342,30 +423,124 @@ function CurrentTimeIndicator() {
   );
 }
 
-function CountdownsStrip() {
-  const { countdowns } = useApp();
-  if (countdowns.length === 0) return null;
+const LIFE_EVENT_RE = /birthday|party|anniversary|wedding|graduation|holiday|vacation|trip/i;
 
+function DeadlineMargin({ layout = 'vertical' }: { layout?: 'horizontal' | 'vertical' }) {
+  const { countdowns } = useApp();
   const today = new Date();
 
-  return (
-    <div className="px-4 py-2 border-b border-border-subtle flex flex-wrap gap-2 shrink-0">
-      {countdowns.map((countdown) => {
-        const days = differenceInCalendarDays(parseISO(countdown.dueDate), today);
-        const colorClass =
-          days < 3
-            ? 'text-red-400 bg-red-400/10 border-red-400/20'
-            : days <= 7
-              ? 'text-amber-400 bg-amber-400/10 border-amber-400/20'
-              : 'text-done bg-done/10 border-done/20';
+  const items = countdowns
+    .map((c) => ({ ...c, days: differenceInCalendarDays(parseISO(c.dueDate), today) }))
+    .filter((c) => c.days >= 0)
+    .sort((a, b) => a.days - b.days);
 
+  if (items.length === 0) return null;
+
+  if (layout === 'horizontal') {
+    return (
+      <div
+        className="shrink-0 flex items-center gap-6 overflow-x-auto hide-scrollbar"
+        style={{
+          borderBottom: '0.5px solid rgba(255,255,255,0.04)',
+          padding: '10px 20px',
+        }}
+      >
+        <div
+          style={{
+            fontSize: 8,
+            letterSpacing: '0.12em',
+            textTransform: 'uppercase' as const,
+            color: 'rgba(130,120,100,0.25)',
+            whiteSpace: 'nowrap',
+          }}
+        >
+          Upcoming
+        </div>
+        {items.map((item) => {
+          const isLife = LIFE_EVENT_RE.test(item.title);
+          return (
+            <div key={item.id} className="flex items-baseline gap-2 shrink-0">
+              <span
+                className="font-display italic text-[14px] leading-none"
+                style={{ color: isLife ? 'rgba(110,135,175,0.65)' : 'rgba(190,90,55,0.8)' }}
+              >
+                {item.days}d
+              </span>
+              <span
+                className="text-[10px] leading-none"
+                style={{
+                  color: 'rgba(160,150,130,0.5)',
+                  whiteSpace: 'nowrap',
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                  maxWidth: 120,
+                }}
+              >
+                {item.title}
+              </span>
+            </div>
+          );
+        })}
+      </div>
+    );
+  }
+
+  // Vertical layout (focus mode — 1/3 column)
+  return (
+    <div
+      className="shrink-0 flex flex-col overflow-y-auto hide-scrollbar"
+      style={{
+        width: '33%',
+        minWidth: 140,
+        borderLeft: '0.5px solid rgba(255,255,255,0.04)',
+        padding: '16px 0 8px',
+        overflow: 'hidden',
+      }}
+    >
+      <div
+        style={{
+          fontSize: 8,
+          letterSpacing: '0.12em',
+          textTransform: 'uppercase' as const,
+          color: 'rgba(130,120,100,0.25)',
+          padding: '0 14px 10px',
+          whiteSpace: 'nowrap',
+        }}
+      >
+        Upcoming
+      </div>
+      {items.map((item) => {
+        const isLife = LIFE_EVENT_RE.test(item.title);
         return (
           <div
-            key={countdown.id}
-            className={cn('flex items-center gap-1.5 px-2 py-1 rounded-md border text-[10px] uppercase tracking-wider', colorClass)}
+            key={item.id}
+            style={{
+              padding: '8px 14px',
+              borderBottom: '0.5px solid rgba(255,255,255,0.03)',
+              overflow: 'hidden',
+            }}
           >
-            <span className="text-text-muted font-sans">{countdown.title}</span>
-            <span className="font-semibold">{days}d</span>
+            <div
+              className="font-display italic text-[16px] leading-none"
+              style={{
+                color: isLife ? 'rgba(110,135,175,0.65)' : 'rgba(190,90,55,0.8)',
+                marginBottom: 3,
+                whiteSpace: 'nowrap',
+              }}
+            >
+              {item.days}d
+            </div>
+            <div
+              className="text-[10px] leading-[1.35]"
+              style={{
+                color: 'rgba(160,150,130,0.5)',
+                whiteSpace: 'nowrap',
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+              }}
+            >
+              {item.title}
+            </div>
           </div>
         );
       })}
@@ -374,12 +549,14 @@ function CountdownsStrip() {
 }
 
 function AfterHoursVeil({
+  workdayStart,
   workdayEnd,
   onEdit,
   isLight,
   isPastClose,
   minutesPastClose,
 }: {
+  workdayStart: { hour: number; min: number };
   workdayEnd: { hour: number; min: number };
   onEdit: () => void;
   isLight: boolean;
@@ -387,9 +564,7 @@ function AfterHoursVeil({
   minutesPastClose: number;
 }) {
   const endMinutes = workdayEnd.hour * 60 + workdayEnd.min;
-  if (endMinutes <= DAY_START_MINS || endMinutes >= DAY_END_MINS) return null;
-
-  const top = timeToTop(endMinutes);
+  const top = timeToTop(endMinutes, workdayStart.hour * 60 + workdayStart.min);
   const overrunHours = Math.floor(minutesPastClose / 60);
   const overrunMinutes = minutesPastClose % 60;
   const overrunLabel = overrunHours > 0 ? `${overrunHours}h ${overrunMinutes}m` : `${overrunMinutes}m`;
@@ -402,7 +577,7 @@ function AfterHoursVeil({
       <button
         onClick={onEdit}
         className={cn(
-          'pointer-events-auto absolute left-4 -top-4 flex items-center gap-2 rounded-full border px-3 py-1.5 text-[10px] uppercase tracking-[0.18em] shadow-[0_12px_24px_rgba(0,0,0,0.2)] backdrop-blur-md transition-all hover:text-text-primary',
+          'pointer-events-auto absolute left-4 -top-4 flex items-center gap-2 rounded-full border px-3 py-1.5 text-[10px] uppercase tracking-[0.18em] transition-all hover:text-text-primary',
           isLight
             ? 'border-stone-300/70 bg-white/92 text-stone-500 hover:border-stone-400/80'
             : 'border-border bg-bg-elevated/90 text-text-muted hover:border-border'
@@ -436,20 +611,8 @@ function AfterHoursVeil({
         className={cn(
           'absolute inset-0',
           isLight
-            ? isPastClose
-              ? 'bg-[linear-gradient(180deg,rgba(196,132,78,0.10),rgba(233,228,219,0.76)_14%,rgba(224,220,211,0.94))]'
-              : 'bg-[linear-gradient(180deg,rgba(176,112,88,0.07),rgba(231,228,220,0.72)_16%,rgba(224,220,211,0.92))]'
-            : isPastClose
-              ? 'bg-[linear-gradient(180deg,rgba(200,60,47,0.14),rgba(22,15,13,0.76)_16%,rgba(10,10,10,0.94))]'
-              : 'bg-[linear-gradient(180deg,rgba(200,60,47,0.08),rgba(10,10,10,0.72)_18%,rgba(10,10,10,0.92))]'
-        )}
-      />
-      <div
-        className={cn(
-          'absolute inset-0 opacity-30',
-          isLight
-            ? 'bg-[repeating-linear-gradient(135deg,rgba(120,113,100,0.045)_0px,rgba(120,113,100,0.045)_8px,transparent_8px,transparent_20px)]'
-            : 'bg-[repeating-linear-gradient(135deg,rgba(255,255,255,0.028)_0px,rgba(255,255,255,0.028)_8px,transparent_8px,transparent_20px)]'
+            ? isPastClose ? 'bg-[rgba(196,132,78,0.04)]' : 'bg-[rgba(176,112,88,0.03)]'
+            : isPastClose ? 'bg-[rgba(200,60,47,0.06)]' : 'bg-[rgba(10,10,10,0.55)]'
         )}
       />
     </div>
@@ -463,17 +626,30 @@ export function Timeline() {
     scheduleTaskBlock,
     updateScheduleBlock,
     removeScheduleBlock,
+    updateRitualEstimate,
     currentBlock,
+    workdayStart,
+    setWorkdayStart,
     workdayEnd,
     setWorkdayEnd,
     timeLogs,
+    refreshExternalData,
+    syncStatus,
   } = useApp();
   const { play } = useSound();
   const gridRef = useRef<HTMLDivElement>(null);
   // Keep a ref so useDrop collect/drop always see the latest blocks (avoids stale closure)
   const scheduleBlocksRef = useRef(scheduleBlocks);
   useEffect(() => { scheduleBlocksRef.current = scheduleBlocks; }, [scheduleBlocks]);
-  const totalHeight = HOURS.length * HOUR_HEIGHT;
+  const dayStartMins = workdayStart.hour * 60 + workdayStart.min;
+  const requestedDayEndMins = workdayEnd.hour * 60 + workdayEnd.min;
+  const dayEndMins = Math.max(dayStartMins + 60, requestedDayEndMins);
+  const hourRows = useMemo(() => {
+    const rowCount = Math.max(1, Math.ceil((dayEndMins - dayStartMins) / 60));
+    return Array.from({ length: rowCount }, (_, index) => dayStartMins + index * 60);
+  }, [dayEndMins, dayStartMins]);
+  const totalHeight = hourRows.length * HOUR_HEIGHT;
+  const [isEditingStart, setIsEditingStart] = useState(false);
   const [isEditingEnd, setIsEditingEnd] = useState(false);
   const [timeLeft, setTimeLeft] = useState('');
   const [minutesPastClose, setMinutesPastClose] = useState(0);
@@ -524,6 +700,7 @@ export function Timeline() {
   const focusMinutes = scheduleBlocks
     .filter((block) => block.kind === 'focus')
     .reduce((sum, block) => sum + block.durationMins, 0);
+  const committedLabel = formatRoundedHours(focusMinutes, true);
   const actualByTask = useMemo(() => {
     const totals = new Map<string, number>();
     for (const log of timeLogs) {
@@ -539,33 +716,22 @@ export function Timeline() {
 
   const currentBlockId = currentBlock?.id ?? null;
 
-  // Returns the end time (in minutes) of the last local focus block, or 0 if none
-  function lastFocusBlockEnd(blocks: ScheduleBlock[]): number {
-    return blocks
-      .filter((b) => b.kind === 'focus' && b.source === 'local')
-      .reduce((maxEnd, b) => Math.max(maxEnd, b.startHour * 60 + b.startMin + b.durationMins), 0);
-  }
+  const resolvePlacement = useCallback((rawMinutes: number, durationMins: number, targetBlockId?: string) => {
+    const snappedMinutes = snapToCalendarGrid(rawMinutes, GRID_SNAP_MINS);
+    const desiredMinutes = clampMinutes(snappedMinutes, dayStartMins, dayEndMins, durationMins);
+    const cascadePlan = planFocusCascade(
+      Math.floor(desiredMinutes / 60),
+      desiredMinutes % 60,
+      durationMins,
+      scheduleBlocksRef.current,
+      targetBlockId
+    );
 
-  // Resolve drop time: default to after last focus block unless cursor is already past it
-  function resolveDropTime(cursorMinutes: number, blocks: ScheduleBlock[]): number {
-    const queueEnd = lastFocusBlockEnd(blocks);
-    const base = queueEnd > 0 && cursorMinutes < queueEnd ? queueEnd : cursorMinutes;
-    let resolved = clampMinutes(base, 60);
-    let didBump = true;
-    while (didBump) {
-      didBump = false;
-      for (const block of blocks) {
-        const blockStart = block.startHour * 60 + block.startMin;
-        const blockEnd = blockStart + block.durationMins;
-        if (resolved < blockEnd && resolved + 60 > blockStart) {
-          resolved = clampMinutes(blockEnd, 60);
-          didBump = true;
-          break;
-        }
-      }
-    }
-    return resolved;
-  }
+    return {
+      startHour: cascadePlan.startHour,
+      startMin: cascadePlan.startMin,
+    };
+  }, [dayEndMins, dayStartMins]);
 
   const [{ isOver, ghostBlock }, dropRef] = useDrop<DragItem, void, { isOver: boolean; ghostBlock: { startHour: number; startMin: number } | null }>({
     accept: DragTypes.TASK,
@@ -578,15 +744,14 @@ export function Timeline() {
       const rect = gridRef.current.getBoundingClientRect();
       const scrollTop = gridRef.current.scrollTop;
       const y = offset.y - rect.top + scrollTop;
-      const rawMinutes = (y / HOUR_HEIGHT) * 60 + DAY_START_MINS;
-      const cursorMinutes = clampMinutes(snapMinutes(rawMinutes), 60);
-      const resolved = resolveDropTime(cursorMinutes, scheduleBlocksRef.current);
+      const rawMinutes = (y / HOUR_HEIGHT) * 60 + dayStartMins;
+      const placement = resolvePlacement(rawMinutes, 60);
 
       return {
         isOver,
         ghostBlock: {
-          startHour: Math.floor(resolved / 60),
-          startMin: resolved % 60,
+          startHour: placement.startHour,
+          startMin: placement.startMin,
         },
       };
     },
@@ -597,27 +762,68 @@ export function Timeline() {
       const rect = gridRef.current.getBoundingClientRect();
       const scrollTop = gridRef.current.scrollTop;
       const y = offset.y - rect.top + scrollTop;
-      const rawMinutes = (y / HOUR_HEIGHT) * 60 + DAY_START_MINS;
-      const cursorMinutes = clampMinutes(snapMinutes(rawMinutes), 60);
-      const resolved = resolveDropTime(cursorMinutes, scheduleBlocksRef.current);
+      const rawMinutes = (y / HOUR_HEIGHT) * 60 + dayStartMins;
+      const placement = resolvePlacement(rawMinutes, 60);
 
-      void scheduleTaskBlock(item.id, Math.floor(resolved / 60), resolved % 60, 60);
+      void scheduleTaskBlock(item.id, placement.startHour, placement.startMin, 60);
       play('paper');
     },
-  });
+  }, [play, resolvePlacement, scheduleTaskBlock]);
 
   return (
-    <div className="focus-spotlight stage-bloom relative w-full bg-[#111111] border-l border-[rgba(255,255,255,0.07)] flex flex-col h-full transition-colors duration-700">
-      <div className="workspace-header shrink-0">
-        <div className="workspace-header-copy">
-          <h2 className="font-sans text-[11px] uppercase tracking-[0.1em] text-text-muted font-medium">
-            Day Frame
-          </h2>
-          <div className="workspace-header-subline">Place the work. Protect the hours.</div>
+    <div className="focus-spotlight stage-bloom relative w-full min-w-0 bg-[#111111] border-l border-[rgba(255,255,255,0.07)] flex flex-col h-full transition-colors duration-700">
+      {/* Day Frame header */}
+      <div className="shrink-0 flex items-center justify-between border-b border-[rgba(255,255,255,0.05)]" style={{ padding: '14px 20px 12px' }}>
+        {/* Left: label + time remaining */}
+        <div className="flex flex-col gap-[5px]">
+          <div className="flex items-center gap-2">
+            <span className="font-sans text-[9px] uppercase tracking-[0.13em]" style={{ color: 'rgba(150,140,120,0.3)' }}>
+              Day Frame
+            </span>
+            <button
+              onClick={() => void refreshExternalData()}
+              title="Sync calendar"
+              className="no-drag opacity-30 hover:opacity-80 transition-opacity"
+              style={{ color: 'rgba(150,140,120,0.8)' }}
+            >
+              <RefreshCw className={cn('w-2.5 h-2.5', syncStatus.loading && 'animate-spin')} />
+            </button>
+          </div>
+          <span className="font-sans text-[11px]" style={{ color: 'rgba(150,140,120,0.4)' }}>
+            {timeLeft}
+          </span>
         </div>
 
-        <div className="workspace-header-meta justify-end min-w-[132px]">
-          <div className="text-right min-w-[132px]">
+        {/* Right: time span + committed */}
+        <div className="flex flex-col items-end gap-[5px]">
+          <div className="flex items-baseline gap-0">
+            {isEditingStart ? (
+              <input
+                type="time"
+                defaultValue={`${String(workdayStart.hour).padStart(2, '0')}:${String(workdayStart.min).padStart(2, '0')}`}
+                autoFocus
+                onBlur={(e) => {
+                  const [h, m] = e.target.value.split(':').map(Number);
+                  if (!isNaN(h) && !isNaN(m)) setWorkdayStart(h, m);
+                  setIsEditingStart(false);
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') e.currentTarget.blur();
+                  if (e.key === 'Escape') setIsEditingStart(false);
+                }}
+                className="bg-transparent border-none outline-none font-display italic text-[20px] w-[100px] text-right"
+                style={{ color: 'rgba(225,215,200,0.88)' }}
+              />
+            ) : (
+              <button
+                onClick={() => setIsEditingStart(true)}
+                className="font-display italic text-[20px] leading-none hover:opacity-70 transition-opacity"
+                style={{ color: 'rgba(225,215,200,0.88)' }}
+              >
+                {formatTimeShort(workdayStart.hour, workdayStart.min)}
+              </button>
+            )}
+            <span className="font-display italic text-[20px] leading-none mx-1.5" style={{ color: 'rgba(225,215,200,0.3)' }}>–</span>
             {isEditingEnd ? (
               <input
                 type="time"
@@ -632,57 +838,52 @@ export function Timeline() {
                   if (e.key === 'Enter') e.currentTarget.blur();
                   if (e.key === 'Escape') setIsEditingEnd(false);
                 }}
-                className="editorial-pill bg-transparent text-text-primary text-[13px] font-mono rounded px-2 py-0.5 w-[90px] text-right"
+                className="bg-transparent border-none outline-none font-display italic text-[20px] w-[100px]"
+                style={{ color: 'rgba(225,215,200,0.88)' }}
               />
             ) : (
-              <>
-                <button
-                  onClick={() => setIsEditingEnd(true)}
-                  className="text-right hover:opacity-70 transition-opacity block w-full"
-                >
-                  <div className="workspace-header-kicker mb-1">Ends</div>
-                  <div className="text-[17px] font-display italic text-text-emphasis leading-none pt-1 pr-0.5 pb-0.5">{formatTime(workdayEnd.hour, workdayEnd.min)}</div>
-                  <div className="text-[10px] text-text-muted">{timeLeft}</div>
-                </button>
-                <div className={cn('text-[10px] text-text-muted mt-1', isFocus && 'focus-fade-meta')}>{formatRoundedHours(focusMinutes, true)} committed</div>
-              </>
+              <button
+                onClick={() => setIsEditingEnd(true)}
+                className="font-display italic text-[20px] leading-none hover:opacity-70 transition-opacity"
+                style={{ color: 'rgba(225,215,200,0.88)' }}
+              >
+                {formatTimeShort(workdayEnd.hour, workdayEnd.min)}
+              </button>
             )}
           </div>
+          {focusMinutes > 0 && (
+            <span className={cn('font-sans text-[11px]', isFocus && 'focus-fade-meta')} style={{ color: 'rgba(190,90,55,0.65)' }}>
+              {committedLabel} committed
+            </span>
+          )}
         </div>
       </div>
 
-      <CountdownsStrip />
+      {/* Deadline strip above calendar (normal mode) */}
+      {!isFocus && <DeadlineMargin layout="horizontal" />}
 
-      <div className={cn(
-        'px-6 py-2 border-b border-border-subtle shrink-0',
-        isLight
-          ? 'bg-[linear-gradient(90deg,rgba(176,112,88,0.05),transparent_45%,rgba(91,143,140,0.04))]'
-          : 'bg-[linear-gradient(90deg,rgba(200,60,47,0.08),transparent_45%,rgba(250,250,250,0.015))]'
-      )}>
-        <div className={cn('text-[10px] tracking-[0.14em] text-text-muted/80', isFocus && 'focus-fade-meta')}>
-          Drag into time. Use the return handle to pull a block back out.
-        </div>
-      </div>
-
+      {/* Calendar + Deadline column (focus mode: side by side) */}
+      <div className="flex flex-1 min-h-0" style={{ minWidth: 0 }}>
       <div
         ref={(el) => {
           dropRef(el);
           (gridRef as React.MutableRefObject<HTMLDivElement | null>).current = el;
         }}
         id="timeline-grid"
-        className={cn('flex-1 overflow-y-auto relative hide-scrollbar transition-colors', isOver && 'bg-accent-warm/[0.035]')}
+        className={cn('flex-1 overflow-y-auto relative hide-scrollbar transition-colors min-w-0', isOver && 'bg-accent-warm/[0.035]')}
+        style={{ maxWidth: isFocus ? undefined : 680 }}
       >
         <div className="relative" style={{ height: `${totalHeight}px` }}>
-          <CurrentTimeIndicator />
+          <CurrentTimeIndicator dayStartMins={dayStartMins} dayEndMins={dayEndMins} />
 
-          {HOURS.map((hour, i) => (
+          {hourRows.map((rowStartMins, i) => (
             <div
-              key={hour}
+              key={rowStartMins}
               className="absolute left-0 right-0 flex border-b border-border-subtle/50"
               style={{ top: `${i * HOUR_HEIGHT}px`, height: `${HOUR_HEIGHT}px` }}
             >
               <div className="w-20 p-2 font-display italic text-[13px] text-text-primary/40 text-right border-r border-border-subtle/50">
-                {formatTime(hour, 0)}
+                {formatTime(Math.floor(rowStartMins / 60), rowStartMins % 60)}
               </div>
               <div className="flex-1 relative">
                 {/* Half-hour mark */}
@@ -695,15 +896,16 @@ export function Timeline() {
 
           {isOver && ghostBlock && (
             <div
-              className="absolute left-4 right-4 rounded-xl border-2 border-dashed border-accent-warm/45 bg-accent-warm/8 pointer-events-none z-20 shadow-[0_0_30px_rgba(200,60,47,0.1)]"
+              className="absolute left-4 right-4 rounded-xl border-2 border-dashed border-accent-warm/45 bg-accent-warm/8 pointer-events-none z-20"
               style={{
-                top: `${timeToTop(ghostBlock.startHour * 60 + ghostBlock.startMin)}px`,
+                top: `${timeToTop(ghostBlock.startHour * 60 + ghostBlock.startMin, dayStartMins)}px`,
                 height: `${HOUR_HEIGHT}px`,
               }}
             />
           )}
 
           <AfterHoursVeil
+            workdayStart={workdayStart}
             workdayEnd={workdayEnd}
             onEdit={() => setIsEditingEnd(true)}
             isLight={isLight}
@@ -720,6 +922,10 @@ export function Timeline() {
                 onUpdate={(startHour, startMin, durationMins) => {
                   void updateScheduleBlock(block.id, startHour, startMin, durationMins);
                 }}
+                onUpdateDuration={block.id.startsWith('ritual-') ? (durationMins) => {
+                  updateRitualEstimate(block.id.slice('ritual-'.length), durationMins);
+                } : undefined}
+                resolvePlacement={resolvePlacement}
                 stagger={i + 1}
                 isNow={block.id === currentBlockId}
                 actualMins={
@@ -728,10 +934,14 @@ export function Timeline() {
                       (livePomodoro?.currentTaskId === block.linkedTaskId ? liveElapsedMins : 0)
                     : 0
                 }
+                dayStartMins={dayStartMins}
+                dayEndMins={dayEndMins}
               />
             ))}
           </div>
         </div>
+      </div>
+      {isFocus && <DeadlineMargin layout="vertical" />}
       </div>
     </div>
   );

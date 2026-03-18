@@ -210,3 +210,11 @@ export function parseCommitChips(
     };
   });
 }
+
+export function parseRitualSuggestions(content: string): string[] {
+  return content
+    .split('\n')
+    .filter((line) => /\[RITUAL\]/i.test(line))
+    .map((line) => line.replace(/\[RITUAL\]/i, '').replace(/^[-–•*]\s*/, '').trim())
+    .filter(Boolean);
+}

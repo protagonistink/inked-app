@@ -32,7 +32,7 @@ export function DragOverlay() {
       <div
         className={cn('absolute')}
         style={{
-          transform: `translate(${clientOffset.x + 18}px, ${clientOffset.y + 18}px) rotate(-3deg) scale(1.04)`,
+          transform: `translate(${clientOffset.x + 10}px, ${clientOffset.y + 10}px)`,
         }}
       >
         <DragGhost item={item} itemType={itemType} />

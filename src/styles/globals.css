@@ -1,19 +1,5 @@
 @import "tailwindcss";
 
-/* ============================================================
-   Atmosphere: @property registrations (must be top-level CSS)
-   Enables native browser interpolation of custom properties.
-   ============================================================ */
-@property --atm-warm-x      { syntax: '<number>'; initial-value: 12;   inherits: true; }
-@property --atm-warm-y      { syntax: '<number>'; initial-value: 8;    inherits: true; }
-@property --atm-cool-x      { syntax: '<number>'; initial-value: 88;   inherits: true; }
-@property --atm-cool-y      { syntax: '<number>'; initial-value: 92;   inherits: true; }
-@property --atm-warm-hue    { syntax: '<number>'; initial-value: 30;   inherits: true; }
-@property --atm-cool-hue    { syntax: '<number>'; initial-value: 210;  inherits: true; }
-@property --atm-saturation   { syntax: '<number>'; initial-value: 60;   inherits: true; }
-@property --atm-warm-opacity { syntax: '<number>'; initial-value: 0.1;  inherits: true; }
-@property --atm-cool-opacity { syntax: '<number>'; initial-value: 0.1;  inherits: true; }
-@property --atm-bloom-opacity { syntax: '<number>'; initial-value: 0;   inherits: true; }
 
 @theme {
   /* === DARK MODE (default) — Protagonist Ink brand palette === */
@@ -26,6 +12,7 @@
   --color-border-hover: rgba(250, 250, 250, 0.14);
   --color-border-subtle: color-mix(in srgb, var(--color-border), transparent 50%);
   --color-accent-warm: #E55547;  /* brand rust — the inkan */
+  --color-accent-cobalt: #1e3f66; /* indigo ink — the thread */
   --color-accent-green: oklch(55% 0.10 155);  /* muted sage */
   --color-text-muted: #828282;
   --color-text-primary: #FAFAFA; /* warmwhite */
@@ -181,8 +168,8 @@
   align-items: center;
   gap: 0.75rem;
   padding-top: 0.15rem;
-  font-size: 0.6875rem;
-  color: var(--color-text-muted);
+  font-size: 0.625rem;
+  color: rgba(140,130,110,0.35);
   white-space: nowrap;
   letter-spacing: 0.04em;
 }
@@ -218,29 +205,15 @@
   z-index: 9999;
   pointer-events: none;
   opacity: 0.025;
-  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
-  background-repeat: repeat;
-  background-size: 256px;
+  /* feTurbulence removed — was forcing a full-screen GPU tile raster on every paint */
   transition: opacity 1s ease-in-out;
 }
 
-[data-theme="dark"] .cinematic-shell::before,
-[data-theme="focus"] .cinematic-shell::before,
-.cinematic-shell::before {
-  content: '';
-  position: fixed;
-  inset: 0;
-  pointer-events: none;
-  z-index: 0;
-  background:
-    radial-gradient(circle at 50% -10%, rgba(255, 207, 149, 0.08), transparent 28%),
-    radial-gradient(circle at 50% 120%, rgba(90, 61, 27, 0.08), transparent 34%);
-  mix-blend-mode: screen;
+[data-ink-open="true"] .grain::after {
+  opacity: 0.012;
+  animation: none;
 }
 
-.cinematic-shell::after {
-  box-shadow: inset 0 0 180px rgba(0, 0, 0, 0.28);
-}
 
 [data-theme="light"] .grain::after {
   opacity: 0.015;
@@ -321,33 +294,12 @@
 }
 
 .utility-rail {
-  background:
-    linear-gradient(180deg, rgba(10, 10, 10, 0.96), rgba(10, 10, 10, 0.99)),
-    repeating-linear-gradient(180deg, rgba(255, 255, 255, 0.012) 0px, rgba(255, 255, 255, 0.012) 1px, transparent 1px, transparent 18px);
+  background: var(--color-bg);
   position: relative;
 }
 
-.utility-rail::before {
-  content: '';
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-  background:
-    linear-gradient(90deg, rgba(0, 0, 0, 0.06), transparent 22%, transparent 78%, rgba(0, 0, 0, 0.04));
-  opacity: 0.65;
-}
-
 [data-theme="light"] .utility-rail {
-  background:
-    linear-gradient(180deg, rgba(243, 240, 234, 0.98), rgba(232, 228, 220, 0.96)),
-    repeating-linear-gradient(180deg, rgba(120, 113, 100, 0.03) 0px, rgba(120, 113, 100, 0.03) 1px, transparent 1px, transparent 18px);
-}
-
-[data-theme="light"] .utility-rail::before {
-  background:
-    linear-gradient(90deg, rgba(176, 112, 88, 0.12), transparent 18%, transparent 82%, rgba(91, 143, 140, 0.08)),
-    radial-gradient(circle at 14% 12%, rgba(255, 255, 255, 0.5), transparent 22%);
-  opacity: 0.85;
+  background: var(--color-bg);
 }
 
 /* ============================================================
@@ -355,8 +307,6 @@
    Translucent surface that lets ~12% of the atmosphere through.
    ============================================================ */
 .glass {
-  backdrop-filter: blur(24px) saturate(1.5);
-  -webkit-backdrop-filter: blur(24px) saturate(1.5);
   background: rgba(10, 10, 10, 0.88);
 }
 
@@ -368,143 +318,66 @@
   background: rgba(10, 10, 10, 0.90);
 }
 
-.editorial-panel {
-  position: relative;
-  background:
-    repeating-linear-gradient(180deg, rgba(255, 255, 255, 0.012) 0px, rgba(255, 255, 255, 0.012) 1px, transparent 1px, transparent 22px),
-    linear-gradient(180deg, rgba(255, 255, 255, 0.015), transparent 18%, rgba(0, 0, 0, 0.14) 100%),
-    linear-gradient(180deg, rgba(24, 24, 24, 0.92), rgba(9, 9, 9, 0.96));
-  box-shadow: 
-    inset 0 1px 0 rgba(255, 255, 255, 0.04),
-    inset 0 -1px 0 rgba(255, 255, 255, 0.015),
-    0 12px 40px rgba(0, 0, 0, 0.22),
-    0 4px 12px rgba(0, 0, 0, 0.16);
-  transition: transform 600ms cubic-bezier(0.4, 0, 0.2, 1),
-              opacity 600ms cubic-bezier(0.4, 0, 0.2, 1),
-              box-shadow 600ms cubic-bezier(0.4, 0, 0.2, 1);
+@layer components {
+  .editorial-panel {
+    position: relative;
+    background: var(--color-bg-card);
+    transition: transform 600ms cubic-bezier(0.4, 0, 0.2, 1),
+                opacity 600ms cubic-bezier(0.4, 0, 0.2, 1);
+  }
+
+  .editorial-card {
+    position: relative;
+    border: 1px solid var(--color-border-subtle);
+    background: rgba(20, 20, 20, 0.9);
+  }
+
+  .editorial-inset {
+    border: 1px solid var(--color-border-subtle);
+    background: rgba(11, 11, 11, 0.62);
+  }
+
+  .editorial-pill {
+    border: 1px solid var(--color-border-subtle);
+    background: rgba(18, 18, 18, 0.74);
+  }
+
+  [data-theme="light"] .editorial-panel {
+    background: var(--color-bg-card);
+  }
+
+  [data-theme="light"] .editorial-card {
+    background: rgba(255, 255, 255, 0.94);
+  }
+
+  [data-theme="light"] .editorial-inset,
+  [data-theme="light"] .editorial-pill {
+    background: rgba(255, 255, 255, 0.86);
+  }
+
+  [data-theme="focus"] .editorial-panel {
+    background: rgba(16, 16, 16, 0.82);
+  }
+
+  [data-theme="focus"] .editorial-card {
+    border-color: rgba(250, 250, 250, 0.03);
+    background: rgba(12, 12, 12, 0.74);
+  }
+
+  [data-theme="focus"] .editorial-inset,
+  [data-theme="focus"] .editorial-pill {
+    border-color: rgba(250, 250, 250, 0.045);
+    background: rgba(12, 13, 16, 0.62);
+  }
+
+  [data-theme="focus"] .focus-block-card {
+    border-color: rgba(250, 250, 250, 0.028);
+    background: rgba(16, 18, 22, 0.88);
+  }
 }
 
-.editorial-panel::after {
-  content: '';
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-  border-radius: inherit;
-  background:
-    linear-gradient(90deg, rgba(255, 255, 255, 0.03), transparent 12%, transparent 88%, rgba(255, 255, 255, 0.02)),
-    linear-gradient(180deg, rgba(200, 60, 47, 0.06), transparent 22%, transparent 78%, rgba(250, 250, 250, 0.02)),
-    repeating-linear-gradient(45deg, rgba(250, 250, 250, 0.01) 0px, rgba(250, 250, 250, 0.01) 1px, transparent 1px, transparent 4px); /* paper ribbing */
-  opacity: 0.85;
-}
-
-.editorial-card {
-  position: relative;
-  border: 1px solid var(--color-border-subtle);
-  background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.02), transparent 36%),
-    rgba(20, 20, 20, 0.9);
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.04),
-    0 18px 36px rgba(0, 0, 0, 0.12);
-}
-
-.editorial-card::before {
-  content: '';
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-  border-radius: inherit;
-  background: linear-gradient(135deg, rgba(255, 255, 255, 0.03), transparent 28%, transparent 72%, rgba(200, 60, 47, 0.04));
-  opacity: 0.85;
-}
-
-.editorial-inset {
-  border: 1px solid var(--color-border-subtle);
-  background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.015), transparent 30%),
-    rgba(11, 11, 11, 0.62);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03);
-}
-
-.editorial-pill {
-  border: 1px solid var(--color-border-subtle);
-  background: rgba(18, 18, 18, 0.74);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03);
-}
-
-[data-theme="light"] .editorial-panel {
-  background:
-    repeating-linear-gradient(180deg, rgba(120, 113, 100, 0.025) 0px, rgba(120, 113, 100, 0.025) 1px, transparent 1px, transparent 22px),
-    linear-gradient(180deg, rgba(255, 255, 255, 0.72), transparent 18%, rgba(176, 112, 88, 0.05) 100%),
-    linear-gradient(180deg, rgba(252, 251, 248, 0.96), rgba(241, 238, 232, 0.96));
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.75),
-    inset 0 -1px 0 rgba(176, 112, 88, 0.05),
-    0 22px 60px rgba(120, 113, 100, 0.08);
-}
-
-[data-theme="light"] .editorial-panel::after {
-  background:
-    linear-gradient(90deg, rgba(176, 112, 88, 0.08), transparent 12%, transparent 88%, rgba(91, 143, 140, 0.06)),
-    linear-gradient(180deg, rgba(255, 255, 255, 0.38), transparent 22%, transparent 78%, rgba(176, 112, 88, 0.06));
-}
-
-[data-theme="light"] .editorial-card {
-  background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.72), transparent 34%),
-    rgba(255, 255, 255, 0.94);
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.85),
-    0 16px 32px rgba(120, 113, 100, 0.08);
-}
-
-[data-theme="light"] .editorial-card::before {
-  background: linear-gradient(135deg, rgba(176, 112, 88, 0.08), transparent 28%, transparent 72%, rgba(91, 143, 140, 0.06));
-}
-
-[data-theme="light"] .editorial-inset,
-[data-theme="light"] .editorial-pill {
-  background: rgba(255, 255, 255, 0.86);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.85);
-}
-
-[data-theme="focus"] .editorial-panel {
-  background:
-    repeating-linear-gradient(180deg, rgba(255, 255, 255, 0.008) 0px, rgba(255, 255, 255, 0.008) 1px, transparent 1px, transparent 24px),
-    linear-gradient(180deg, rgba(255, 255, 255, 0.01), transparent 16%, rgba(0, 0, 0, 0.3) 100%),
-    linear-gradient(180deg, rgba(16, 16, 16, 0.82), rgba(8, 8, 8, 0.90));
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.02),
-    0 20px 50px rgba(0, 0, 0, 0.12);
-}
-
-[data-theme="focus"] .editorial-card {
-  border-color: rgba(250, 250, 250, 0.03);
-  background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.008), transparent 24%),
-    rgba(12, 12, 12, 0.74);
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.02),
-    0 14px 28px rgba(0, 0, 0, 0.08);
-}
-
-[data-theme="focus"] .editorial-inset,
-[data-theme="focus"] .editorial-pill {
-  border-color: rgba(250, 250, 250, 0.045);
-  background: rgba(12, 13, 16, 0.62);
-}
-
-[data-theme="focus"] .focus-block-card {
-  border-color: rgba(250, 250, 250, 0.028);
-  background: rgba(16, 18, 22, 0.88);
-  box-shadow:
-    inset 0 1px 0 rgba(250, 250, 250, 0.045),
-    0 18px 34px rgba(0, 0, 0, 0.12);
-}
-
-[data-theme="focus"] .focus-block-card::before {
-  background: linear-gradient(135deg, rgba(255, 255, 255, 0.012), transparent 32%, transparent 78%, rgba(200, 60, 47, 0.025));
-  opacity: 0.45;
+.archive-textarea::placeholder {
+  color: rgba(225, 215, 200, 0.2);
 }
 
 .balance-callout {
@@ -538,12 +411,10 @@
   background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 512 512' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='p'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='1.2' numOctaves='5' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23p)'/%3E%3C/svg%3E");
   background-repeat: repeat;
   background-size: 512px;
-  mix-blend-mode: overlay;
 }
 
 [data-theme="light"] .paper-texture::after {
   opacity: 0.035;
-  mix-blend-mode: multiply;
 }
 
 [data-theme="focus"] .paper-texture::after {
@@ -553,16 +424,17 @@
 /* ── TodaysFlow (editorial-panel) gets coarser grain ──────────── */
 /* Overrides the fine-grain default with a letterpress/stamp quality
    that echoes the ink-bleed + stamp-texture filters in the logo. */
-.editorial-panel.paper-texture::after {
-  opacity: 0.075;
-  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 512 512' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='p'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.5' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23p)'/%3E%3C/svg%3E");
-  background-size: 256px;
-  mix-blend-mode: overlay;
-}
+@layer components {
+  .editorial-panel.paper-texture::after {
+    opacity: 0.075;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 512 512' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='p'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.5' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23p)'/%3E%3C/svg%3E");
+    background-size: 256px;
+  }
 
-[data-theme="light"] .editorial-panel.paper-texture::after {
-  opacity: 0.06;
-  mix-blend-mode: multiply;
+  [data-theme="light"] .editorial-panel.paper-texture::after {
+    opacity: 0.06;
+    mix-blend-mode: multiply;
+  }
 }
 
 /* ── Column gradient divider ────────────────────────────────── */
@@ -578,13 +450,7 @@
   bottom: 0;
   width: 1px;
   z-index: 2;
-  background: linear-gradient(
-    180deg,
-    transparent 0%,
-    var(--color-border) 15%,
-    var(--color-border) 85%,
-    transparent 100%
-  );
+  background: var(--color-border-subtle);
 }
 
 /* ============================================================
@@ -592,160 +458,19 @@
    ============================================================ */
 
 .atmosphere-layer {
-  position: fixed;
-  inset: 0;
-  z-index: 0;
-  pointer-events: none;
-  /* Override global * transition — use our own 90s property-specific transitions */
-  transition:
-    --atm-warm-x 90s linear,
-    --atm-warm-y 90s linear,
-    --atm-cool-x 90s linear,
-    --atm-cool-y 90s linear,
-    --atm-warm-hue 90s linear,
-    --atm-cool-hue 90s linear,
-    --atm-saturation 90s linear,
-    --atm-warm-opacity 90s linear,
-    --atm-cool-opacity 90s linear,
-    --atm-bloom-opacity 90s linear;
+  display: none;
 }
 
-/* Large-scale noise breakup — frosted glass effect on gradients */
-.atmosphere-layer::before {
-  content: '';
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-  opacity: 0.012;
-  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 1024 1024' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n2'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.3' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n2)'/%3E%3C/svg%3E");
-  background-repeat: repeat;
-  background-size: 1024px;
-  mix-blend-mode: overlay;
-}
-
-/* ── Warm light ("the sun") — oklch for perceptual smoothness ── */
-.atm-warm {
-  position: absolute;
-  inset: -20%;
-  background: radial-gradient(
-    ellipse 60% 50% at calc(var(--atm-warm-x) * 1%) calc(var(--atm-warm-y) * 1%),
-    oklch(0.72 calc(var(--atm-saturation) * 0.0017) var(--atm-warm-hue) / var(--atm-warm-opacity)),
-    transparent 55%
-  );
-  mix-blend-mode: screen;
-  animation: atm-breathe-warm 53s ease-in-out infinite;
-}
-
-/* ── Cool depth ("the shadow") — oklch ── */
-.atm-cool {
-  position: absolute;
-  inset: -20%;
-  background: radial-gradient(
-    ellipse 55% 45% at calc(var(--atm-cool-x) * 1%) calc(var(--atm-cool-y) * 1%),
-    oklch(0.50 calc(var(--atm-saturation) * 0.8 * 0.0017) var(--atm-cool-hue) / var(--atm-cool-opacity)),
-    transparent 50%
-  );
-  mix-blend-mode: soft-light;
-  animation: atm-breathe-cool 71s ease-in-out infinite;
-}
-
-/* ── Focus bloom — oklch ── */
-.atm-bloom {
-  position: absolute;
-  inset: -10%;
-  background: radial-gradient(
-    circle at 50% 45%,
-    oklch(0.65 calc(var(--atm-saturation) * 0.7 * 0.0017) calc(var(--atm-warm-hue) + 15) / var(--atm-bloom-opacity)),
-    transparent 40%
-  );
-  mix-blend-mode: screen;
-  animation: atm-breathe-bloom 37s ease-in-out infinite;
-}
-
-/* ── Stage bloom — rust ember scoped to Timeline column ── */
-/* Painted via ::before; stays inside the container. No glassmorphism. */
+/* ── Stage bloom — removed (no gradients) ── */
 .stage-bloom {
   isolation: isolate;
 }
-.stage-bloom::before {
-  content: '';
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-  background: radial-gradient(
-    ellipse 90% 45% at 50% 92%,
-    oklch(0.42 0.13 27 / 0.18),
-    transparent 65%
-  );
-  mix-blend-mode: screen;
-  z-index: 0;
-}
 
-/* ── Vertical veil (anchoring darkness) ── */
+/* ── Vertical veil — removed ── */
 .atm-veil {
   position: absolute;
   inset: 0;
-  background: linear-gradient(
-    180deg,
-    rgba(10, 10, 10, 0.06) 0%,
-    rgba(10, 10, 10, 0.55) 100%
-  );
-}
-
-/* ── Breathing keyframes: prime-number durations ── */
-/* Warm: 53s figure-8 drift + gentle scale */
-@keyframes atm-breathe-warm {
-  0%   { transform: translate(0, 0) scale(1); }
-  25%  { transform: translate(1.5%, -0.8%) scale(1.02); }
-  50%  { transform: translate(0, 1%) scale(1.03); }
-  75%  { transform: translate(-1.5%, -0.5%) scale(1.01); }
-  100% { transform: translate(0, 0) scale(1); }
-}
-
-/* Cool: 71s inverse drift */
-@keyframes atm-breathe-cool {
-  0%   { transform: translate(0, 0) scale(1); }
-  25%  { transform: translate(-1%, 0.6%) scale(1.015); }
-  50%  { transform: translate(0.8%, -0.8%) scale(1.025); }
-  75%  { transform: translate(1.2%, 0.4%) scale(1.01); }
-  100% { transform: translate(0, 0) scale(1); }
-}
-
-/* Bloom: 37s gentle pulse */
-@keyframes atm-breathe-bloom {
-  0%   { transform: scale(1); opacity: 1; }
-  50%  { transform: scale(1.04); opacity: 0.85; }
-  100% { transform: scale(1); opacity: 1; }
-}
-
-/* ── Light theme: washed watercolors ── */
-[data-theme="light"] .atm-veil {
-  background: linear-gradient(
-    180deg,
-    rgba(245, 244, 241, 0.04) 0%,
-    rgba(245, 244, 241, 0.35) 100%
-  );
-}
-
-[data-theme="light"] .atmosphere-layer::before {
-  opacity: 0.008;
-}
-
-/* ── Focus theme: let more atmosphere through (theater lighting) ── */
-[data-theme="focus"] .atm-cool {
-  opacity: 0.5;
-}
-
-[data-theme="focus"] .atm-veil {
-  background: linear-gradient(
-    180deg,
-    rgba(10, 10, 10, 0.04) 0%,
-    rgba(10, 10, 10, 0.6) 100%
-  );
-}
-
-[data-theme="focus"] .atmosphere-layer::before {
-  opacity: 0.006;
+  background: transparent;
 }
 
 /* ============================================================
@@ -878,4 +603,70 @@
 }
 .prose-briefing h3 {
   font-size: 0.9em;
+}
+
+/* ── Ink FAB animations ── */
+
+/* Idle: slow breathing pulse */
+.ink-fab .ink-fab__icon {
+  animation: inkPulse 3.5s ease-in-out infinite;
+}
+
+@keyframes inkPulse {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.04); }
+}
+
+/* Hover: subtle wobble */
+.ink-fab:hover .ink-fab__icon {
+  animation: inkWobble 0.5s ease-in-out;
+}
+
+@keyframes inkWobble {
+  0%, 100% { transform: scale(1) rotate(0deg); }
+  25% { transform: scale(1.04) rotate(-3deg); }
+  50% { transform: scale(1.04) rotate(3deg); }
+  75% { transform: scale(1.04) rotate(-1.5deg); }
+}
+
+/* Thinking: concentric rings expanding outward */
+/* position: relative is in @layer components so Tailwind's `absolute` utility overrides it */
+@layer components {
+  .ink-fab {
+    position: relative;
+  }
+}
+
+.ink-fab__ring {
+  position: absolute;
+  inset: 0;
+  border-radius: 9999px;
+  border: 1.5px solid var(--color-accent-warm, #e8927c);
+  opacity: 0;
+  pointer-events: none;
+}
+
+.ink-fab--thinking .ink-fab__icon {
+  animation: none;
+}
+
+.ink-fab--thinking .ink-fab__ring--1 {
+  animation: inkRing 1.4s ease-out infinite;
+}
+.ink-fab--thinking .ink-fab__ring--2 {
+  animation: inkRing 1.4s ease-out 0.35s infinite;
+}
+.ink-fab--thinking .ink-fab__ring--3 {
+  animation: inkRing 1.4s ease-out 0.7s infinite;
+}
+
+@keyframes inkRing {
+  0% {
+    transform: scale(1);
+    opacity: 0.55;
+  }
+  100% {
+    transform: scale(1.9);
+    opacity: 0;
+  }
 }

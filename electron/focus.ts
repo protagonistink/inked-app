@@ -4,7 +4,7 @@ import { readFile } from 'node:fs/promises';
 import { store } from './store';
 
 const HOSTS_PATH = '/etc/hosts';
-const HOSTS_MARKER = '# Threadline Focus Mode';
+const HOSTS_MARKER = '# Inked Focus Mode';
 const STAGE_MANAGER_STORE_KEY = 'focus.stageManagerWasEnabled';
 
 function shellQuote(value: string) {
@@ -87,7 +87,7 @@ async function unblockSites() {
 
   if (!hostsContent.includes(HOSTS_MARKER)) return;
 
-  const removalScript = String.raw`\n?\Q# Threadline Focus Mode\E[\s\S]*?\Q# Threadline Focus Mode END\E\n?`;
+  const removalScript = String.raw`\n?\Q# Inked Focus Mode\E[\s\S]*?\Q# Inked Focus Mode END\E\n?`;
   await runPrivilegedShell(
     `/usr/bin/perl -0pi -e ${shellQuote(`s/${removalScript}//g`)} ${shellQuote(HOSTS_PATH)} && dscacheutil -flushcache && killall -HUP mDNSResponder`
   );

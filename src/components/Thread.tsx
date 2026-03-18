@@ -112,7 +112,7 @@ export function InkThread() {
       <path
         d={path}
         fill="none"
-        stroke="var(--color-accent-warm)"
+        stroke="var(--color-accent-cobalt)"
         strokeWidth="2"
         strokeOpacity="0.25"
         filter="url(#thread-glow)"
@@ -122,7 +122,7 @@ export function InkThread() {
       <path
         d={path}
         fill="none"
-        stroke="var(--color-accent-warm)"
+        stroke="var(--color-accent-cobalt)"
         strokeWidth="1"
         strokeOpacity="0.40"
         className="transition-all duration-500"

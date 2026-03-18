@@ -25,6 +25,7 @@ export interface PlannerState {
   workdayStart: { hour: number; min: number };
   workdayEnd: { hour: number; min: number };
   dayEntries: DayEntry[];
+  userName: string;
 }
 
 type PlannerField = keyof PlannerState;
@@ -44,6 +45,7 @@ export const initialPlannerState: PlannerState = {
   workdayStart: { hour: 9, min: 0 },
   workdayEnd: { hour: 18, min: 0 },
   dayEntries: [],
+  userName: 'Patrick',
 };
 
 function applySetStateAction<T>(prev: T, next: T | ((current: T) => T)): T {
@@ -115,6 +117,10 @@ export function storedPlannerStateToPlannerState(stored: StoredPlannerState): Pa
 
   if (stored.dayEntries) {
     nextState.dayEntries = stored.dayEntries;
+  }
+
+  if (stored.userName) {
+    nextState.userName = stored.userName;
   }
 
   return nextState;

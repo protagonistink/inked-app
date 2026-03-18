@@ -1,7 +1,7 @@
 {
-  "name": "threadline",
-  "version": "2.2.0",
-  "description": "Electron planning and focus app for Threadline.",
+  "name": "inked",
+  "version": "1.0.0",
+  "description": "Electron planning and focus app for Inked.",
   "private": true,
   "author": "Protagonist Ink",
   "main": "dist-electron/main.js",

@@ -101,6 +101,7 @@ interface AppContextValue {
   setWorkdayStart: (hour: number, min: number) => void;
   workdayEnd: { hour: number; min: number };
   setWorkdayEnd: (hour: number, min: number) => void;
+  userName: string;
   updateTaskEstimate: (id: string, mins: number) => void;
   nestTask: (childId: string, parentId: string) => void;
   unnestTask: (childId: string) => void;
@@ -124,6 +125,8 @@ interface AppContextValue {
   saveDayEntry: (date: string, text: string) => void;
   showEndOfDayPrompt: boolean;
   dismissEndOfDayPrompt: () => void;
+  showStartOfDayPrompt: boolean;
+  dismissStartOfDayPrompt: () => void;
 }
 
 const AppContext = createContext<AppContextValue>(null!);
@@ -144,7 +147,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [focusResumePrompt, setFocusResumePrompt] = useState(false);
   const [showEndOfDayPrompt, setShowEndOfDayPrompt] = useState(false);
   const hasShownEndOfDayRef = useRef(false);
-  const focusBridgeReadyRef = useRef(false);
+  const [showStartOfDayPrompt, setShowStartOfDayPrompt] = useState(false);
+  const hasShownStartOfDayRef = useRef(false);
   const [syncStatus, setSyncStatus] = useState<{ asana: string | null; gcal: string | null; loading: boolean }>({
     asana: null,
     gcal: null,
@@ -162,6 +166,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     workdayStart,
     workdayEnd,
     dayEntries,
+    userName,
   } = plannerState;
 
   const setWeeklyGoals = useCallback(createPlannerFieldSetter(dispatchPlanner, 'weeklyGoals'), []);
@@ -222,25 +227,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, []);
 
   useEffect(() => {
-    if (!focusBridgeReadyRef.current) {
-      focusBridgeReadyRef.current = true;
-      return;
-    }
-
-    const syncFocusMode = async () => {
-      const result = dayLocked
-        ? await window.api.focus.enable()
-        : await window.api.focus.disable();
-
-      if (!result.success) {
-        console.error(dayLocked ? 'Failed to enable focus protections:' : 'Failed to disable focus protections:', result.error);
-      }
-    };
-
-    void syncFocusMode();
-  }, [dayLocked]);
-
-  useEffect(() => {
     if (!isInitialized) return;
     const currentMonth = new Date().toISOString().slice(0, 7); // "2026-03"
     if (!monthlyPlan || monthlyPlan.month !== currentMonth) {
@@ -253,18 +239,41 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
   }, [isInitialized, monthlyPlan]);
 
+  // Use primitive minutes to avoid re-firing when reducer creates new object references
+  const workdayStartMinutes = workdayStart.hour * 60 + workdayStart.min;
+  const workdayEndMinutes = workdayEnd.hour * 60 + workdayEnd.min;
+
+  // Start-of-day prompt: fire once when current time first crosses workdayStart
+  useEffect(() => {
+    if (!isInitialized) return;
+    hasShownStartOfDayRef.current = false; // reset only when workdayStartMinutes actually changes
+
+    const check = () => {
+      if (hasShownStartOfDayRef.current) return;
+      const nowMinutes = new Date().getHours() * 60 + new Date().getMinutes();
+      if (nowMinutes >= workdayStartMinutes) {
+        hasShownStartOfDayRef.current = true;
+        setShowStartOfDayPrompt(true);
+        void window.api.window.showMain();
+      }
+    };
+
+    check(); // run immediately in case we're already past start time
+    const id = setInterval(check, 60 * 1000);
+    return () => clearInterval(id);
+  }, [isInitialized, workdayStartMinutes]);
+
   // End-of-day prompt: fire once when current time first crosses workdayEnd
   useEffect(() => {
     if (!isInitialized) return;
-    hasShownEndOfDayRef.current = false; // reset when workdayEnd changes
+    hasShownEndOfDayRef.current = false; // reset only when workdayEndMinutes actually changes
 
     const check = () => {
       if (hasShownEndOfDayRef.current) return;
-      const now = new Date();
-      const endMinutes = workdayEnd.hour * 60 + workdayEnd.min;
-      const nowMinutes = now.getHours() * 60 + now.getMinutes();
-      if (nowMinutes >= endMinutes) {
+      const nowMinutes = new Date().getHours() * 60 + new Date().getMinutes();
+      if (nowMinutes >= workdayEndMinutes) {
         hasShownEndOfDayRef.current = true;
+        setShowStartOfDayPrompt(false); // clear any lingering start-of-day prompt underneath
         setShowEndOfDayPrompt(true);
         void window.api.window.showMain();
       }
@@ -273,7 +282,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     check(); // run immediately in case we're already past end time
     const id = setInterval(check, 60 * 1000);
     return () => clearInterval(id);
-  }, [isInitialized, workdayEnd]);
+  }, [isInitialized, workdayEndMinutes]);
 
   usePlannerPersistence({
     isInitialized,
@@ -291,6 +300,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       workdayEnd,
       monthlyPlan,
       dayEntries,
+      userName,
     },
   });
 
@@ -563,6 +573,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, [setDayEntries]);
 
   const dismissEndOfDayPrompt = useCallback(() => setShowEndOfDayPrompt(false), []);
+  const dismissStartOfDayPrompt = useCallback(() => setShowStartOfDayPrompt(false), []);
 
   const resetDay = useCallback(async () => {
     const focusBlocks = scheduleBlocks.filter((block) => !block.readOnly && block.kind === 'focus');
@@ -654,6 +665,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         setWorkdayStart,
         workdayEnd,
         setWorkdayEnd,
+        userName,
         updateTaskEstimate,
         nestTask,
         unnestTask,
@@ -677,6 +689,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
         isInitialized,
         showEndOfDayPrompt,
         dismissEndOfDayPrompt,
+        showStartOfDayPrompt,
+        dismissStartOfDayPrompt,
       }}
     >
       {children}

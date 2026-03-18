@@ -239,5 +239,29 @@ If work resumes, the highest-value next pass is:
 
 ## Next Session Note
 
+## Ink Panel / Performance Note
+
+Recent AI panel work:
+- `src/components/MorningBriefing.tsx` now has a time-aware pre-chat state for `Ink` when opened in chat mode:
+  - morning: `Here's what's happening today.`
+  - midday: `Do we need to move some things around?`
+  - evening: `What's the plan for tonight?`
+- the intro panel uses planning/scheduling starter actions instead of a generic AI empty state
+- once the first prompt is sent, the panel drops into the existing conversation flow
+
+Important runtime finding:
+- the app is not "too heavy for Electron" in principle, but it was heavy enough to trigger Chromium compositor pressure
+- during live dev runs, `tile memory limits exceeded` warnings appeared and one renderer crash occurred while the atmospheric shell plus Ink panel were stacked together
+- this read as a compositing problem, not a case for rewriting as a native Mac app
+
+Mitigation applied:
+- when `Ink` is open, `src/App.tsx` now disables the global `AtmosphereLayer` and grain overlay
+- `src/styles/globals.css` softens the shell further in the Ink-open state
+- `src/components/MorningBriefing.tsx` no longer uses backdrop blur on the main panel and no longer uses the large blurred intro halo
+
+Result:
+- after the more aggressive trim pass, the app loaded cleanly in dev without repeating the previous tile-pressure warnings during follow-up checks
+- the current baseline assumption should be: any new atmospheric layer added to the app needs to justify its render cost, especially when Ink is open
+
 - remove the temporary Electron renderer/load logging added in `electron/main.ts` once the black-screen fix is confirmed stable
 - keep the Vite watcher ignore rules in `vite.config.ts`; they were added to stop reload churn from `release/`, `dist/`, `dist-electron/`, and `build/`
