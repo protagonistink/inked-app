@@ -1,17 +1,19 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { X, GripVertical, Play, Check, RefreshCw } from 'lucide-react';
 import { useDrag } from 'react-dnd';
-import { differenceInCalendarDays, parseISO } from 'date-fns';
+import { differenceInCalendarDays, format, parseISO } from 'date-fns';
 import { useDrop } from 'react-dnd';
 import { getEmptyImage } from 'react-dnd-html5-backend';
 import { cn, formatRoundedHours } from '@/lib/utils';
-import { CALENDAR_GRID_SNAP_MINS, planFocusCascade, snapToCalendarGrid } from '@/lib/planner';
+import { CALENDAR_GRID_SNAP_MINS, blockStartMinutes, blockEndMinutes, planFocusCascade, snapToCalendarGrid } from '@/lib/planner';
 import { useTheme } from '@/context/ThemeContext';
 import { useApp } from '@/context/AppContext';
 import { DragTypes, type DragItem } from '@/hooks/useDragDrop';
 import { useSound } from '@/hooks/useSound';
+import { usePhysicsWarnings } from '@/hooks/usePhysicsWarnings';
 import type { PomodoroState, ScheduleBlock } from '@/types';
 import { GCalIcon } from './AppIcons';
+import { PlanningDateSwitcher } from './PlanningDateSwitcher';
 
 const HOUR_HEIGHT = 96;
 const GRID_SNAP_MINS = CALENDAR_GRID_SNAP_MINS;
@@ -64,33 +66,183 @@ function FocusSetMeter({ durationMins }: { durationMins: number }) {
   );
 }
 
+function AIBreakdown({ block }: { block: ScheduleBlock }) {
+  const [expanded, setExpanded] = useState(false);
+  const [suggestions, setSuggestions] = useState<string[]>([]);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [loading, setLoading] = useState(false);
+  const { nestTask, addLocalTask } = useApp();
+
+  async function fetchBreakdown() {
+    setExpanded(true);
+    if (suggestions.length > 0) return;
+    setLoading(true);
+    try {
+      const res = await window.api.ai.chat(
+        [{ role: 'user', content: `Break down "${block.title}" into 3-5 concrete sub-tasks. Return ONLY a numbered list, no preamble.` }],
+        {} as any
+      );
+      if (res.success && res.content) {
+        const lines = res.content.split('\n')
+          .map(l => l.replace(/^\d+[\.\)]\s*/, '').trim())
+          .filter(l => l.length > 0);
+        setSuggestions(lines.slice(0, 5));
+      }
+    } catch { /* silent */ }
+    setLoading(false);
+  }
+
+  function toggleItem(item: string) {
+    setSelected(prev => {
+      const next = new Set(prev);
+      if (next.has(item)) next.delete(item);
+      else next.add(item);
+      return next;
+    });
+  }
+
+  function inkSelected() {
+    for (const item of selected) {
+      if (block.linkedTaskId) {
+        const taskId = addLocalTask(item);
+        if (taskId) nestTask(taskId, block.linkedTaskId);
+      }
+    }
+    setSelected(new Set());
+    setExpanded(false);
+  }
+
+  return (
+    <div className="mt-3">
+      {!expanded ? (
+        <button
+          onClick={(e) => { e.stopPropagation(); fetchBreakdown(); }}
+          className="font-sans text-[11px] text-[#919fae]/40 hover:text-[#919fae]/70 transition-colors"
+        >
+          ✨ AI Breakdown
+        </button>
+      ) : (
+        <div className="pt-3" style={{ borderTop: '1px solid rgba(250,250,250,0.05)' }}>
+          <span className="font-sans text-[9px] tracking-[0.18em] uppercase text-[#919fae]/28 block mb-3">
+            Ink suggests from Asana
+          </span>
+          {loading ? (
+            <span className="text-[11px] text-text-muted/30">Thinking...</span>
+          ) : (
+            <>
+              {suggestions.map((item) => (
+                <div
+                  key={item}
+                  className={cn('triage-row', selected.has(item) && 'selected')}
+                  onClick={(e) => { e.stopPropagation(); toggleItem(item); }}
+                >
+                  <div className="triage-box" />
+                  <span>{item}</span>
+                </div>
+              ))}
+              {selected.size > 0 && (
+                <div className="flex items-center gap-3 mt-4 pt-3" style={{ borderTop: '1px solid rgba(250,250,250,0.04)' }}>
+                  <button
+                    onClick={(e) => { e.stopPropagation(); inkSelected(); }}
+                    className="font-sans text-[13px] text-[#E55547]/65 hover:text-[#E55547]/90 transition-colors cursor-pointer font-medium"
+                  >
+                    Ink it →
+                  </button>
+                  <span className="text-text-muted/20 text-[10px]">·</span>
+                  <button
+                    onClick={(e) => { e.stopPropagation(); setExpanded(false); }}
+                    className="font-sans text-[11px] text-text-muted/30 hover:text-text-muted/50 transition-colors cursor-pointer"
+                  >
+                    skip for now
+                  </button>
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function OpenInterval({
+  startMins,
+  durationMins,
+  dayStartMins,
+}: {
+  startMins: number;
+  durationMins: number;
+  dayStartMins: number;
+}) {
+  const top = timeToTop(startMins, dayStartMins);
+  const height = (durationMins / 60) * HOUR_HEIGHT;
+  if (height < 12) return null;
+
+  const hours = Math.floor(durationMins / 60);
+  const mins = durationMins % 60;
+  const label = hours > 0
+    ? `${hours}h${mins > 0 ? ` ${mins}m` : ''} open`
+    : `${mins}m open`;
+
+  return (
+    <div
+      className="absolute left-0 right-0 flex items-center justify-center pointer-events-none"
+      style={{
+        top,
+        height,
+        border: '1px dashed rgba(156,158,162,0.15)',
+        borderRadius: 8,
+      }}
+    >
+      <span
+        className="font-sans text-[10px]"
+        style={{ color: 'rgba(156,158,162,0.3)' }}
+      >
+        {label}
+      </span>
+    </div>
+  );
+}
+
 function BlockCard({
   block,
   onRemove,
   onUpdate,
   onUpdateDuration,
   resolvePlacement,
+  acceptProposal,
   stagger = 0,
   isNow = false,
   actualMins = 0,
   dayStartMins,
   dayEndMins,
+  physicsWarning,
 }: {
   block: ScheduleBlock;
   onRemove: () => void;
   onUpdate: (startHour: number, startMin: number, durationMins: number) => void;
   onUpdateDuration?: (durationMins: number) => void;
   resolvePlacement: (rawMinutes: number, durationMins: number, targetBlockId?: string) => { startHour: number; startMin: number };
+  acceptProposal: (blockId: string) => void;
   stagger?: number;
   isNow?: boolean;
   actualMins?: number;
   dayStartMins: number;
   dayEndMins: number;
+  physicsWarning?: string | null;
 }) {
-  const { isLight, isFocus } = useTheme();
-  const { plannedTasks, setActiveTask, toggleTask } = useApp();
+  const { isFocus } = useTheme();
+  const { plannedTasks, weeklyGoals, setActiveTask, toggleTask } = useApp();
   const linkedTask = block.linkedTaskId ? plannedTasks.find((task) => task.id === block.linkedTaskId) : null;
   const isDone = linkedTask?.status === 'done';
+
+  // Dynamic thread color for border-left based on weekly goal
+  const goalId = linkedTask?.weeklyGoalId ?? null;
+  const goalIndex = goalId ? weeklyGoals.findIndex((g) => g.id === goalId) : -1;
+  const threadColor = goalIndex === 0 ? 'rgba(229,85,71,0.5)'
+    : goalIndex === 1 ? 'rgba(74,109,140,0.5)'
+    : goalIndex === 2 ? 'rgba(145,159,174,0.4)'
+    : 'rgba(100,116,139,0.3)';
   const [{ isDragging }, dragRef, previewRef] = useDrag<DragItem, unknown, { isDragging: boolean }>({
     type: DragTypes.BLOCK,
     canDrag: !block.readOnly && !isDone && Boolean(block.linkedTaskId),
@@ -114,6 +266,15 @@ function BlockCard({
   const height = ((draft?.durationMins ?? block.durationMins) / 60) * HOUR_HEIGHT;
   const isShortBlock = height < 110;
   const actualLabel = actualMins > 0 ? formatRoundedHours(actualMins, true) : null;
+
+  // Determine block variant class
+  const blockVariant = block.kind === 'hard'
+    ? 't-gcal'
+    : block.kind === 'break'
+      ? 't-ritual'
+      : block.proposal === 'draft'
+        ? 't-draft'
+        : 't-inked';
 
   function beginDrag(event: React.MouseEvent<HTMLDivElement>) {
     if (block.readOnly || isDone) return;
@@ -217,17 +378,9 @@ function BlockCard({
       onMouseDown={beginDrag}
       onClick={handleClick}
       className={cn(
-        'editorial-card animate-fade-in absolute left-4 right-4 overflow-hidden rounded-[8px] p-4 flex flex-col gap-1.5 transition-all duration-300 group/block',
+        blockVariant,
+        'animate-fade-in absolute left-4 right-4 overflow-hidden rounded-[8px] p-4 flex flex-col gap-1.5 transition-all duration-300 group/block',
         isFocus && block.kind !== 'hard' && 'focus-block-card',
-        block.kind === 'break'
-          ? isLight
-            ? 'border-l-[3px] border-l-text-muted/40 opacity-75'
-            : 'border-l-[3px] border-l-text-muted/30 opacity-70'
-          : block.kind !== 'hard'
-            ? isLight
-              ? 'border-l-[3px] border-l-accent-warm'
-              : 'border-l-[3px] border-l-accent-warm/60'
-            : '',
         stagger === 1 && 'stagger-2',
         stagger === 2 && 'stagger-3',
         stagger === 3 && 'stagger-4',
@@ -235,8 +388,18 @@ function BlockCard({
         isDone && 'opacity-70 saturate-[0.8]',
         isNow && !isDragging && 'ring-1 ring-active/40'
       )}
-      style={{ top: `${top}px`, height: `${height}px` }}
+      style={{ top: `${top}px`, height: `${height}px`, borderLeftColor: block.kind === 'focus' ? threadColor : undefined }}
     >
+      {/* Inked badge for t-inked blocks */}
+      {blockVariant === 't-inked' && block.linkedTaskId && (
+        <div className="flex items-start justify-between mb-2">
+          <span className="inked-badge">Inked</span>
+          <span className="font-sans text-[9px] tracking-[0.12em] uppercase text-text-muted/35">
+            {block.durationMins} mins
+          </span>
+        </div>
+      )}
+
       {!block.readOnly && block.linkedTaskId && !isDone && (
         <button
           onMouseDown={(event) => {
@@ -303,9 +466,12 @@ function BlockCard({
             {!isShortBlock && <span className="text-[10px] uppercase tracking-[0.14em]">Return</span>}
           </button>
         )}
-        <h4 className={cn('text-[13px] font-medium truncate focus-editorial', isDone ? 'text-text-muted line-through' : 'text-text-primary')}>{block.title}</h4>
+        <h4 className={cn(
+          'truncate focus-editorial font-display italic text-[16px] leading-snug',
+          isDone ? 'text-text-muted line-through' : 'text-[#FAFAFA]/80'
+        )}>{block.title}</h4>
       </div>
-      <div className="relative z-10 text-[10px] font-mono text-text-muted whitespace-nowrap focus-fade-meta">
+      <div className="relative z-10 text-[10px] text-[rgba(148,163,184,0.5)] tracking-wider whitespace-nowrap">
         {formatTime(block.startHour, block.startMin)} - {formatTime(
           block.startHour + Math.floor((block.startMin + block.durationMins) / 60),
           (block.startMin + block.durationMins) % 60
@@ -333,6 +499,36 @@ function BlockCard({
           </span>
         )}
       </div>
+
+      {/* Physics warning */}
+      {physicsWarning && (
+        <div className="physics-warning">{physicsWarning}</div>
+      )}
+
+      {/* AI Breakdown for focus blocks */}
+      {block.kind === 'focus' && block.linkedTaskId && (
+        <AIBreakdown block={block} />
+      )}
+
+      {/* Draft block accept/reject actions */}
+      {blockVariant === 't-draft' && (
+        <div className="flex items-center gap-3 mt-4 pt-3" style={{ borderTop: '1px solid rgba(250,250,250,0.04)' }}>
+          <button
+            onClick={(e) => { e.stopPropagation(); acceptProposal(block.id); }}
+            className="font-sans text-[13px] text-[#E55547]/65 hover:text-[#E55547]/90 transition-colors cursor-pointer font-medium"
+          >
+            Ink it →
+          </button>
+          <span className="text-text-muted/20 text-[10px]">·</span>
+          <button
+            onClick={(e) => { e.stopPropagation(); onRemove(); }}
+            className="font-sans text-[11px] text-text-muted/30 hover:text-text-muted/50 transition-colors cursor-pointer"
+          >
+            skip for now
+          </button>
+        </div>
+      )}
+
       {onUpdateDuration && !isDone && block.durationMins >= 15 && (
         <div
           onMouseDown={(e) => e.stopPropagation()}
@@ -412,12 +608,13 @@ function CurrentTimeIndicator({
 
   return (
     <div className="absolute left-0 right-0 flex items-center z-10 pointer-events-none" style={{ top: `${top}px` }} id="now-indicator">
-      <div className="w-20 text-[10px] font-mono text-right pr-2 text-active focus-editorial">
+      <div className="time-lbl" style={{ color: 'rgba(229, 85, 71, 0.5)' }}>
         {formatTime(currentHour, currentMin)}
       </div>
-      <div className="flex-1 relative">
-        <div className="w-full border-t border-active" />
-        <div className="absolute -left-1 -top-1 w-2 h-2 rounded-full bg-active animate-time-pulse" />
+      <div className="flex items-center flex-1 gap-0">
+        <div className="now-pip" />
+        <div className="flex-1 h-px" style={{ background: 'linear-gradient(90deg, rgba(229, 85, 71, 0.3), transparent 80%)' }} />
+        <span className="font-sans text-[10px] text-[#E55547]/40 pl-2">now</span>
       </div>
     </div>
   );
@@ -450,7 +647,7 @@ function DeadlineMargin({ layout = 'vertical' }: { layout?: 'horizontal' | 'vert
             fontSize: 8,
             letterSpacing: '0.12em',
             textTransform: 'uppercase' as const,
-            color: 'rgba(130,120,100,0.25)',
+            color: 'rgba(148,163,184,0.45)',
             whiteSpace: 'nowrap',
           }}
         >
@@ -571,7 +768,7 @@ function AfterHoursVeil({
 
   return (
     <div
-      className="absolute left-20 right-0 bottom-0 pointer-events-none z-[5]"
+      className="absolute left-14 right-0 bottom-0 pointer-events-none z-[5]"
       style={{ top: `${top}px` }}
     >
       <button
@@ -588,13 +785,13 @@ function AfterHoursVeil({
       </button>
       <div className="absolute inset-x-0 top-0 h-0.5 mt-[0px]">
         <svg className="absolute top-[-5px] left-0 right-0 w-full h-[10px] pointer-events-none" preserveAspectRatio="none" viewBox="0 0 100 10">
-          <path 
-            d="M0 5 Q 25 4.5, 50 6 T 100 5" 
-            fill="none" 
-            stroke="currentColor" 
-            strokeWidth="0.8" 
-            opacity="0.6" 
-            strokeLinecap="round" 
+          <path
+            d="M0 5 Q 25 4.5, 50 6 T 100 5"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="0.8"
+            opacity="0.6"
+            strokeLinecap="round"
             className={cn(
               isLight
                 ? isPastClose
@@ -603,7 +800,7 @@ function AfterHoursVeil({
                 : isPastClose
                   ? 'text-accent-warm'
                   : 'text-border'
-            )} 
+            )}
           />
         </svg>
       </div>
@@ -627,6 +824,7 @@ export function Timeline() {
     updateScheduleBlock,
     removeScheduleBlock,
     updateRitualEstimate,
+    acceptProposal,
     currentBlock,
     workdayStart,
     setWorkdayStart,
@@ -635,8 +833,12 @@ export function Timeline() {
     timeLogs,
     refreshExternalData,
     syncStatus,
+    selectedDate,
+    dayCommitInfo,
   } = useApp();
+  const timelineLocked = dayCommitInfo.state === 'closed';
   const { play } = useSound();
+  const { getWarning } = usePhysicsWarnings();
   const gridRef = useRef<HTMLDivElement>(null);
   // Keep a ref so useDrop collect/drop always see the latest blocks (avoids stale closure)
   const scheduleBlocksRef = useRef(scheduleBlocks);
@@ -649,11 +851,59 @@ export function Timeline() {
     return Array.from({ length: rowCount }, (_, index) => dayStartMins + index * 60);
   }, [dayEndMins, dayStartMins]);
   const totalHeight = hourRows.length * HOUR_HEIGHT;
+
+  const openIntervals = useMemo(() => {
+    if (dayCommitInfo.state !== 'committed') return [];
+
+    const sorted = [...scheduleBlocks]
+      .sort((a, b) => blockStartMinutes(a) - blockStartMinutes(b));
+
+    const intervals: Array<{ startMins: number; durationMins: number }> = [];
+    let cursor = dayStartMins;
+
+    for (const block of sorted) {
+      const bStart = blockStartMinutes(block);
+      const bEnd = blockEndMinutes(block);
+      if (bStart > cursor) {
+        const gap = bStart - cursor;
+        if (gap >= 30) {
+          intervals.push({ startMins: cursor, durationMins: gap });
+        }
+      }
+      cursor = Math.max(cursor, bEnd);
+    }
+
+    if (cursor < dayEndMins) {
+      const gap = dayEndMins - cursor;
+      if (gap >= 30) {
+        intervals.push({ startMins: cursor, durationMins: gap });
+      }
+    }
+
+    return intervals;
+  }, [dayCommitInfo.state, scheduleBlocks, dayStartMins, dayEndMins]);
   const [isEditingStart, setIsEditingStart] = useState(false);
   const [isEditingEnd, setIsEditingEnd] = useState(false);
   const [timeLeft, setTimeLeft] = useState('');
   const [minutesPastClose, setMinutesPastClose] = useState(0);
   const [livePomodoro, setLivePomodoro] = useState<PomodoroState | null>(null);
+  const [inkMessage, setInkMessage] = useState('');
+  const isTodayView = selectedDate === format(new Date(), 'yyyy-MM-dd');
+  const selectedDateLabel = format(parseISO(selectedDate), 'MMMM d');
+  const selectedWeekday = format(parseISO(selectedDate), 'EEEE');
+
+  useEffect(() => {
+    if (!isTodayView) {
+      setInkMessage('');
+      return;
+    }
+    window.api.ai.chat(
+      [{ role: 'user', content: 'Give me a one-sentence daily planning intention for today. Be brief and poetic. No greeting.' }],
+      {} as any
+    ).then((res) => {
+      if (res.success && res.content) setInkMessage(res.content.trim());
+    }).catch(() => {});
+  }, [isTodayView]);
 
   useEffect(() => {
     function computeDayBoundaryState() {
@@ -681,6 +931,20 @@ export function Timeline() {
 
     const updateBoundaryState = () => {
       const next = computeDayBoundaryState();
+      // Only show "past close" when blocks were committed but incomplete.
+      // If day was never committed or all blocks are done, show neutral messaging.
+      if (next.pastClose > 0 && dayCommitInfo.state === 'closed') {
+        if (!dayCommitInfo.hadBlocks) {
+          setTimeLeft('Day uncommitted');
+          setMinutesPastClose(0);
+          return;
+        }
+        if (dayCommitInfo.completedBlocks >= dayCommitInfo.totalBlocks) {
+          setTimeLeft(`Day closed — ${Math.round(dayCommitInfo.completedFocusMins / 60 * 10) / 10}h focused`);
+          setMinutesPastClose(0);
+          return;
+        }
+      }
       setTimeLeft(next.label);
       setMinutesPastClose(next.pastClose);
     };
@@ -734,7 +998,7 @@ export function Timeline() {
   }, [dayEndMins, dayStartMins]);
 
   const [{ isOver, ghostBlock }, dropRef] = useDrop<DragItem, void, { isOver: boolean; ghostBlock: { startHour: number; startMin: number } | null }>({
-    accept: DragTypes.TASK,
+    accept: timelineLocked ? [] : DragTypes.TASK,
     collect: (monitor) => {
       const offset = monitor.getClientOffset();
       const isOver = monitor.isOver();
@@ -772,13 +1036,37 @@ export function Timeline() {
 
   return (
     <div className="focus-spotlight stage-bloom relative w-full min-w-0 bg-[#111111] border-l border-[rgba(255,255,255,0.07)] flex flex-col h-full transition-colors duration-700">
-      {/* Day Frame header */}
-      <div className="shrink-0 flex items-center justify-between border-b border-[rgba(255,255,255,0.05)]" style={{ padding: '14px 20px 12px' }}>
-        {/* Left: label + time remaining */}
-        <div className="flex flex-col gap-[5px]">
+      {/* Sticky Date Header */}
+      <div className="sticky top-0 z-20 px-8 pt-6 pb-5" style={{ background: 'rgba(10, 10, 10, 0.85)', backdropFilter: 'blur(16px)' }}>
+        <div className="flex items-end justify-between">
+          <div>
+            <span className="font-sans text-[10px] tracking-[0.25em] uppercase text-[#919fae]/35">
+              {selectedWeekday}
+            </span>
+            <div className="font-display leading-none mt-1" style={{ fontSize: '2.75rem', fontWeight: 400, color: '#c8c6c2', letterSpacing: '-0.015em' }}>
+              {selectedDateLabel}
+            </div>
+          </div>
+          <div className="text-right pb-1 flex flex-col items-end gap-3">
+            <PlanningDateSwitcher />
+            <div>
+              <div className="font-sans text-[10px] tracking-[0.15em] uppercase text-[#919fae]/30 mb-1">
+                {isTodayView ? 'Focus today' : 'Focus planned'}
+              </div>
+              <div className="font-display text-[17px] text-[#ff9786]/65">{committedLabel}</div>
+            </div>
+          </div>
+        </div>
+        {inkMessage && isTodayView && (
+          <p className="font-display mt-4 leading-relaxed text-[15px] font-light text-[#919fae]/50">
+            {inkMessage}
+          </p>
+        )}
+        {/* Sync + time controls row */}
+        <div className="flex items-center justify-between mt-4 pt-3" style={{ borderTop: '1px solid rgba(255,255,255,0.04)' }}>
           <div className="flex items-center gap-2">
-            <span className="font-sans text-[9px] uppercase tracking-[0.13em]" style={{ color: 'rgba(150,140,120,0.3)' }}>
-              Day Frame
+            <span className="font-sans text-[11px]" style={{ color: 'rgba(148,163,184,0.6)' }}>
+              {isTodayView ? timeLeft : `Planning ${selectedWeekday.toLowerCase()}`}
             </span>
             <button
               onClick={() => void refreshExternalData()}
@@ -789,13 +1077,6 @@ export function Timeline() {
               <RefreshCw className={cn('w-2.5 h-2.5', syncStatus.loading && 'animate-spin')} />
             </button>
           </div>
-          <span className="font-sans text-[11px]" style={{ color: 'rgba(150,140,120,0.4)' }}>
-            {timeLeft}
-          </span>
-        </div>
-
-        {/* Right: time span + committed */}
-        <div className="flex flex-col items-end gap-[5px]">
           <div className="flex items-baseline gap-0">
             {isEditingStart ? (
               <input
@@ -811,19 +1092,19 @@ export function Timeline() {
                   if (e.key === 'Enter') e.currentTarget.blur();
                   if (e.key === 'Escape') setIsEditingStart(false);
                 }}
-                className="bg-transparent border-none outline-none font-display italic text-[20px] w-[100px] text-right"
+                className="bg-transparent border-none outline-none font-display italic text-[15px] w-[80px] text-right"
                 style={{ color: 'rgba(225,215,200,0.88)' }}
               />
             ) : (
               <button
                 onClick={() => setIsEditingStart(true)}
-                className="font-display italic text-[20px] leading-none hover:opacity-70 transition-opacity"
-                style={{ color: 'rgba(225,215,200,0.88)' }}
+                className="font-display italic text-[15px] leading-none hover:opacity-70 transition-opacity"
+                style={{ color: 'rgba(225,215,200,0.6)' }}
               >
                 {formatTimeShort(workdayStart.hour, workdayStart.min)}
               </button>
             )}
-            <span className="font-display italic text-[20px] leading-none mx-1.5" style={{ color: 'rgba(225,215,200,0.3)' }}>–</span>
+            <span className="font-display italic text-[15px] leading-none mx-1" style={{ color: 'rgba(225,215,200,0.2)' }}>–</span>
             {isEditingEnd ? (
               <input
                 type="time"
@@ -838,24 +1119,19 @@ export function Timeline() {
                   if (e.key === 'Enter') e.currentTarget.blur();
                   if (e.key === 'Escape') setIsEditingEnd(false);
                 }}
-                className="bg-transparent border-none outline-none font-display italic text-[20px] w-[100px]"
+                className="bg-transparent border-none outline-none font-display italic text-[15px] w-[80px]"
                 style={{ color: 'rgba(225,215,200,0.88)' }}
               />
             ) : (
               <button
                 onClick={() => setIsEditingEnd(true)}
-                className="font-display italic text-[20px] leading-none hover:opacity-70 transition-opacity"
-                style={{ color: 'rgba(225,215,200,0.88)' }}
+                className="font-display italic text-[15px] leading-none hover:opacity-70 transition-opacity"
+                style={{ color: 'rgba(225,215,200,0.6)' }}
               >
                 {formatTimeShort(workdayEnd.hour, workdayEnd.min)}
               </button>
             )}
           </div>
-          {focusMinutes > 0 && (
-            <span className={cn('font-sans text-[11px]', isFocus && 'focus-fade-meta')} style={{ color: 'rgba(190,90,55,0.65)' }}>
-              {committedLabel} committed
-            </span>
-          )}
         </div>
       </div>
 
@@ -870,11 +1146,10 @@ export function Timeline() {
           (gridRef as React.MutableRefObject<HTMLDivElement | null>).current = el;
         }}
         id="timeline-grid"
-        className={cn('flex-1 overflow-y-auto relative hide-scrollbar transition-colors min-w-0', isOver && 'bg-accent-warm/[0.035]')}
-        style={{ maxWidth: isFocus ? undefined : 680 }}
+        className={cn('dot-grid flex-1 overflow-y-auto relative hide-scrollbar transition-colors min-w-0', isOver && 'bg-accent-warm/[0.035]')}
       >
-        <div className="relative" style={{ height: `${totalHeight}px` }}>
-          <CurrentTimeIndicator dayStartMins={dayStartMins} dayEndMins={dayEndMins} />
+        <div className="w-full max-w-4xl mx-auto relative" style={{ height: `${totalHeight}px` }}>
+          {isTodayView && <CurrentTimeIndicator dayStartMins={dayStartMins} dayEndMins={dayEndMins} />}
 
           {hourRows.map((rowStartMins, i) => (
             <div
@@ -882,8 +1157,8 @@ export function Timeline() {
               className="absolute left-0 right-0 flex border-b border-border-subtle/50"
               style={{ top: `${i * HOUR_HEIGHT}px`, height: `${HOUR_HEIGHT}px` }}
             >
-              <div className="w-20 p-2 font-display italic text-[13px] text-text-primary/40 text-right border-r border-border-subtle/50">
-                {formatTime(Math.floor(rowStartMins / 60), rowStartMins % 60)}
+              <div className="time-lbl p-2 text-right border-r border-border-subtle/50 whitespace-nowrap" style={{ width: 56 }}>
+                {formatTimeShort(Math.floor(rowStartMins / 60), rowStartMins % 60)}
               </div>
               <div className="flex-1 relative">
                 {/* Half-hour mark */}
@@ -904,28 +1179,31 @@ export function Timeline() {
             />
           )}
 
-          <AfterHoursVeil
-            workdayStart={workdayStart}
-            workdayEnd={workdayEnd}
-            onEdit={() => setIsEditingEnd(true)}
-            isLight={isLight}
-            isPastClose={minutesPastClose > 0}
-            minutesPastClose={minutesPastClose}
-          />
+          {isTodayView && (
+            <AfterHoursVeil
+              workdayStart={workdayStart}
+              workdayEnd={workdayEnd}
+              onEdit={() => setIsEditingEnd(true)}
+              isLight={isLight}
+              isPastClose={minutesPastClose > 0}
+              minutesPastClose={minutesPastClose}
+            />
+          )}
 
-          <div className="absolute top-0 left-20 right-0 bottom-0">
+          <div className="absolute top-0 left-14 right-0 bottom-0">
             {scheduleBlocks.map((block, i) => (
               <BlockCard
                 key={block.id}
                 block={block}
-                onRemove={() => removeScheduleBlock(block.id)}
-                onUpdate={(startHour, startMin, durationMins) => {
+                onRemove={timelineLocked ? () => {} : () => removeScheduleBlock(block.id)}
+                onUpdate={timelineLocked ? () => {} : (startHour, startMin, durationMins) => {
                   void updateScheduleBlock(block.id, startHour, startMin, durationMins);
                 }}
-                onUpdateDuration={block.id.startsWith('ritual-') ? (durationMins) => {
+                onUpdateDuration={timelineLocked ? undefined : block.id.startsWith('ritual-') ? (durationMins) => {
                   updateRitualEstimate(block.id.slice('ritual-'.length), durationMins);
                 } : undefined}
                 resolvePlacement={resolvePlacement}
+                acceptProposal={acceptProposal}
                 stagger={i + 1}
                 isNow={block.id === currentBlockId}
                 actualMins={
@@ -936,6 +1214,15 @@ export function Timeline() {
                 }
                 dayStartMins={dayStartMins}
                 dayEndMins={dayEndMins}
+                physicsWarning={getWarning(block)}
+              />
+            ))}
+            {openIntervals.map((interval, i) => (
+              <OpenInterval
+                key={`interval-${i}`}
+                startMins={interval.startMins}
+                durationMins={interval.durationMins}
+                dayStartMins={dayStartMins}
               />
             ))}
           </div>
