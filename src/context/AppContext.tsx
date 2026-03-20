@@ -3,15 +3,17 @@ import {
   useCallback,
   useContext,
   useEffect,
+  useMemo,
   useReducer,
-  useRef,
   useState,
   type ReactNode,
 } from 'react';
+import { format } from 'date-fns';
 import type {
   Countdown,
   DailyPlan,
   DailyRitual,
+  DayCommitInfo,
   DayEntry,
   InboxItem,
   MonthlyPlan,
@@ -30,6 +32,8 @@ import { useExternalPlannerSync } from '@/hooks/useExternalPlannerSync';
 import { useScheduleManager } from '@/hooks/useScheduleManager';
 import { useTaskActions } from '@/hooks/useTaskActions';
 import { usePlannerSelectors } from '@/hooks/usePlannerSelectors';
+import { useDayCommitState } from '@/hooks/useDayCommitState';
+import { useWorkdayPrompts } from '@/hooks/useWorkdayPrompts';
 import {
   createPlannerFieldSetter,
   initialPlannerState,
@@ -38,7 +42,7 @@ import {
   storedPlannerStateToPlannerState,
 } from './plannerState';
 
-export type View = 'flow' | 'archive' | 'goals';
+export type View = 'flow' | 'archive' | 'goals' | 'scratch';
 export type SourceView = 'cover' | 'asana' | 'gcal' | 'gmail';
 
 interface AppContextValue {
@@ -46,6 +50,8 @@ interface AppContextValue {
   setActiveView: (view: View) => void;
   activeSource: SourceView;
   setActiveSource: (source: SourceView) => void;
+  viewDate: Date;
+  setViewDate: (date: Date) => void;
   weeklyGoals: WeeklyGoal[];
   addWeeklyGoal: (title: string, color?: string) => boolean;
   removeWeeklyGoal: (id: string) => void;
@@ -60,10 +66,11 @@ interface AppContextValue {
   candidateItems: InboxItem[];
   archiveTasks: PlannedTask[];
   dailyPlan: DailyPlan;
+  getDailyPlanForDate: (date: Date) => DailyPlan;
   selectedInboxId: string | null;
   selectInboxItem: (id: string) => void;
-  addLocalTask: (title: string, goalId?: string) => void;
-  bringForward: (taskId: string, goalId?: string) => void;
+  addLocalTask: (title: string, goalId?: string, targetDate?: string) => string;
+  bringForward: (taskId: string, goalId?: string, targetDate?: string) => void;
   lastCommitTimestamp: number;
   assignTaskToGoal: (taskId: string, goalId: string) => void;
   moveForward: (taskId: string) => Promise<void>;
@@ -72,11 +79,12 @@ interface AppContextValue {
   toggleTask: (id: string) => Promise<void>;
   setActiveTask: (id: string) => void;
   scheduleBlocks: ScheduleBlock[];
-  scheduleTaskBlock: (taskId: string, startHour: number, startMin: number, durationMins?: number) => Promise<void>;
+  scheduleTaskBlock: (taskId: string, startHour: number, startMin: number, durationMins?: number, taskTitle?: string, targetDate?: string) => Promise<void>;
   updateScheduleBlock: (blockId: string, startHour: number, startMin: number, durationMins: number) => Promise<void>;
   removeScheduleBlock: (id: string) => Promise<void>;
   unscheduleTaskBlock: (id: string, goalId?: string) => Promise<void>;
   clearFocusBlocks: () => Promise<void>;
+  acceptProposal: (blockId: string) => Promise<void>;
   currentBlock: ScheduleBlock | null;
   nextBlock: ScheduleBlock | null;
   currentTask: PlannedTask | null;
@@ -127,6 +135,8 @@ interface AppContextValue {
   dismissEndOfDayPrompt: () => void;
   showStartOfDayPrompt: boolean;
   dismissStartOfDayPrompt: () => void;
+  isFirstLoadOfDay: boolean;
+  dayCommitInfo: DayCommitInfo;
 }
 
 const AppContext = createContext<AppContextValue>(null!);
@@ -145,10 +155,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [monthlyPlanPrompt, setMonthlyPlanPrompt] = useState(false);
   const [isMonthlyPlanningOpen, setIsMonthlyPlanningOpen] = useState(false);
   const [focusResumePrompt, setFocusResumePrompt] = useState(false);
-  const [showEndOfDayPrompt, setShowEndOfDayPrompt] = useState(false);
-  const hasShownEndOfDayRef = useRef(false);
-  const [showStartOfDayPrompt, setShowStartOfDayPrompt] = useState(false);
-  const hasShownStartOfDayRef = useRef(false);
+  const [workdayPromptsInit, setWorkdayPromptsInit] = useState<{
+    startShownDate: string | null;
+    endShownDate: string | null;
+    isFirstLoadOfDay: boolean;
+  } | null>(null);
   const [syncStatus, setSyncStatus] = useState<{ asana: string | null; gcal: string | null; loading: boolean }>({
     asana: null,
     gcal: null,
@@ -159,7 +170,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     weeklyGoals,
     plannedTasks,
     scheduleBlocks,
-    dailyPlan,
+    dailyPlans,
     timeLogs,
     rituals,
     countdowns,
@@ -167,18 +178,53 @@ export function AppProvider({ children }: { children: ReactNode }) {
     workdayEnd,
     dayEntries,
     userName,
+    viewDate,
   } = plannerState;
 
   const setWeeklyGoals = useCallback(createPlannerFieldSetter(dispatchPlanner, 'weeklyGoals'), []);
   const setPlannedTasks = useCallback(createPlannerFieldSetter(dispatchPlanner, 'plannedTasks'), []);
   const setScheduleBlocks = useCallback(createPlannerFieldSetter(dispatchPlanner, 'scheduleBlocks'), []);
-  const setDailyPlan = useCallback(createPlannerFieldSetter(dispatchPlanner, 'dailyPlan'), []);
+  const setDailyPlans = useCallback(createPlannerFieldSetter(dispatchPlanner, 'dailyPlans'), []);
+  const setViewDateState = useCallback(createPlannerFieldSetter(dispatchPlanner, 'viewDate'), []);
   const setTimeLogs = useCallback(createPlannerFieldSetter(dispatchPlanner, 'timeLogs'), []);
   const setRituals = useCallback(createPlannerFieldSetter(dispatchPlanner, 'rituals'), []);
   const setCountdowns = useCallback(createPlannerFieldSetter(dispatchPlanner, 'countdowns'), []);
   const setWorkdayStartState = useCallback(createPlannerFieldSetter(dispatchPlanner, 'workdayStart'), []);
   const setWorkdayEndState = useCallback(createPlannerFieldSetter(dispatchPlanner, 'workdayEnd'), []);
   const setDayEntries = useCallback(createPlannerFieldSetter(dispatchPlanner, 'dayEntries'), []);
+
+  const viewDateValue = useMemo(() => new Date(`${viewDate}T12:00:00`), [viewDate]);
+
+  const dailyPlan = useMemo<DailyPlan>(() => (
+    dailyPlans.find((plan) => plan.date === viewDate)
+    ?? { date: viewDate, committedTaskIds: [] }
+  ), [dailyPlans, viewDate]);
+
+  const updateDailyPlanForDate = useCallback((date: string, value: DailyPlan | ((current: DailyPlan) => DailyPlan)) => {
+    setDailyPlans((prev) => {
+      const current = prev.find((plan) => plan.date === date) ?? { date, committedTaskIds: [] };
+      const nextPlan = typeof value === 'function'
+        ? (value as (current: DailyPlan) => DailyPlan)(current)
+        : value;
+      const targetDate = nextPlan.date || date;
+      const withoutCurrent = prev.filter((plan) => plan.date !== targetDate);
+      return [...withoutCurrent, { ...nextPlan, date: targetDate }].sort((a, b) => a.date.localeCompare(b.date));
+    });
+  }, [setDailyPlans]);
+
+  const setDailyPlan = useCallback((value: DailyPlan | ((current: DailyPlan) => DailyPlan)) => {
+    updateDailyPlanForDate(viewDate, value);
+  }, [updateDailyPlanForDate, viewDate]);
+
+  const getDailyPlanForDate = useCallback((date: Date): DailyPlan => {
+    const dateKey = format(date, 'yyyy-MM-dd');
+    return dailyPlans.find((plan) => plan.date === dateKey)
+      ?? { date: dateKey, committedTaskIds: [] };
+  }, [dailyPlans]);
+
+  const setViewDate = useCallback((date: Date) => {
+    setViewDateState(format(date, 'yyyy-MM-dd'));
+  }, [setViewDateState]);
 
   useEffect(() => {
     async function loadState() {
@@ -197,6 +243,18 @@ export function AppProvider({ children }: { children: ReactNode }) {
         if (stored?.workdayStart) setWorkdayStartState(stored.workdayStart);
         if (stored?.workdayEnd) setWorkdayEndState(stored.workdayEnd);
         if (stored?.monthlyPlan !== undefined) setMonthlyPlanState(stored.monthlyPlan ?? null);
+
+        const [startShown, endShown] = await Promise.all([
+          window.api.store.get('startOfDay.shownDate'),
+          window.api.store.get('endOfDay.shownDate'),
+        ]);
+        const today = new Date().toISOString().split('T')[0];
+        const startShownDate = (startShown as string) || null;
+        setWorkdayPromptsInit({
+          startShownDate,
+          endShownDate: (endShown as string) || null,
+          isFirstLoadOfDay: startShownDate !== today,
+        });
       } catch (error) {
         console.error('Failed to load planner state:', error);
       } finally {
@@ -243,53 +301,28 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const workdayStartMinutes = workdayStart.hour * 60 + workdayStart.min;
   const workdayEndMinutes = workdayEnd.hour * 60 + workdayEnd.min;
 
-  // Start-of-day prompt: fire once when current time first crosses workdayStart
-  useEffect(() => {
-    if (!isInitialized) return;
-    hasShownStartOfDayRef.current = false; // reset only when workdayStartMinutes actually changes
-
-    const check = () => {
-      if (hasShownStartOfDayRef.current) return;
-      const nowMinutes = new Date().getHours() * 60 + new Date().getMinutes();
-      if (nowMinutes >= workdayStartMinutes) {
-        hasShownStartOfDayRef.current = true;
-        setShowStartOfDayPrompt(true);
-        void window.api.window.showMain();
-      }
-    };
-
-    check(); // run immediately in case we're already past start time
-    const id = setInterval(check, 60 * 1000);
-    return () => clearInterval(id);
-  }, [isInitialized, workdayStartMinutes]);
-
-  // End-of-day prompt: fire once when current time first crosses workdayEnd
-  useEffect(() => {
-    if (!isInitialized) return;
-    hasShownEndOfDayRef.current = false; // reset only when workdayEndMinutes actually changes
-
-    const check = () => {
-      if (hasShownEndOfDayRef.current) return;
-      const nowMinutes = new Date().getHours() * 60 + new Date().getMinutes();
-      if (nowMinutes >= workdayEndMinutes) {
-        hasShownEndOfDayRef.current = true;
-        setShowStartOfDayPrompt(false); // clear any lingering start-of-day prompt underneath
-        setShowEndOfDayPrompt(true);
-        void window.api.window.showMain();
-      }
-    };
-
-    check(); // run immediately in case we're already past end time
-    const id = setInterval(check, 60 * 1000);
-    return () => clearInterval(id);
-  }, [isInitialized, workdayEndMinutes]);
+  const {
+    showStartOfDayPrompt,
+    showEndOfDayPrompt,
+    isFirstLoadOfDay,
+    dismissStartOfDayPrompt,
+    dismissEndOfDayPrompt,
+  } = useWorkdayPrompts({
+    isInitialized,
+    workdayStartMinutes,
+    workdayEndMinutes,
+    initialStartShownDate: workdayPromptsInit?.startShownDate ?? null,
+    initialEndShownDate: workdayPromptsInit?.endShownDate ?? null,
+    initialIsFirstLoadOfDay: workdayPromptsInit?.isFirstLoadOfDay ?? true,
+  });
 
   usePlannerPersistence({
     isInitialized,
     state: {
       weeklyGoals,
       plannedTasks,
-      dailyPlan,
+      dailyPlans,
+      viewDate,
       timeLogs,
       activeView,
       activeSource,
@@ -319,6 +352,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setSyncStatus,
     rituals,
     workdayStart,
+    viewDate,
   });
 
   useAutoRefresh({
@@ -498,10 +532,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
     updateTaskEstimate,
   } = useTaskActions({
     weeklyGoals,
+    plannedTasks,
     scheduleBlocks,
+    planningDate: viewDate,
     setPlannedTasks,
     setScheduleBlocks,
-    setDailyPlan,
+    setDailyPlanForDate: updateDailyPlanForDate,
     setSelectedInboxId,
     setLastCommitTimestamp,
   });
@@ -512,13 +548,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
     removeScheduleBlock,
     unscheduleTaskBlock,
     clearFocusBlocks,
+    acceptProposal,
   } = useScheduleManager({
     plannedTasks,
     scheduleBlocks,
     dailyPlan,
+    planningDate: viewDate,
     setPlannedTasks,
     setScheduleBlocks,
-    setDailyPlan,
+    setDailyPlanForDate: updateDailyPlanForDate,
     bringForward,
   });
 
@@ -534,6 +572,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
     plannedTasks,
     scheduleBlocks,
     dailyPlan,
+    planningDate: viewDate,
+  });
+
+  const dayCommitInfo = useDayCommitState({
+    scheduleBlocks,
+    plannedTasks,
+    dailyPlan,
+    viewDate: viewDateValue,
+    workdayEnd,
   });
 
   const logFocusSession = useCallback((input: { taskId: string | null; durationMins: number; endedAt?: string }) => {
@@ -572,9 +619,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
     });
   }, [setDayEntries]);
 
-  const dismissEndOfDayPrompt = useCallback(() => setShowEndOfDayPrompt(false), []);
-  const dismissStartOfDayPrompt = useCallback(() => setShowStartOfDayPrompt(false), []);
-
   const resetDay = useCallback(async () => {
     const focusBlocks = scheduleBlocks.filter((block) => !block.readOnly && block.kind === 'focus');
     await Promise.allSettled(
@@ -610,6 +654,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
         setActiveView,
         activeSource,
         setActiveSource,
+        viewDate: viewDateValue,
+        setViewDate,
         weeklyGoals,
         addWeeklyGoal,
         removeWeeklyGoal,
@@ -624,6 +670,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         candidateItems,
         archiveTasks,
         dailyPlan,
+        getDailyPlanForDate,
         selectedInboxId,
         selectInboxItem,
         addLocalTask,
@@ -641,6 +688,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         removeScheduleBlock,
         unscheduleTaskBlock,
         clearFocusBlocks,
+        acceptProposal,
         currentBlock,
         nextBlock,
         currentTask,
@@ -691,6 +739,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
         dismissEndOfDayPrompt,
         showStartOfDayPrompt,
         dismissStartOfDayPrompt,
+        isFirstLoadOfDay,
+        dayCommitInfo,
       }}
     >
       {children}
