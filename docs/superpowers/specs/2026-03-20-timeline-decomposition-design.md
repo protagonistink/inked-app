@@ -187,7 +187,7 @@ export function BlockCard({
 })
 ```
 
-Imports `AIBreakdown` from `./AIBreakdown`. Imports utilities from `./timelineUtils`. Uses `useApp`, `useTheme`, `useDrag`. ~400 lines (including `FocusSetMeter` internal).
+Imports `AIBreakdown` from `./AIBreakdown`. Imports `timeToTop`, `formatTimeShort`, `GRID_SNAP_MINS`, `getStepMins` from `./timelineUtils`. Uses `useApp`, `useTheme`, `useDrag`. ~400 lines (including `FocusSetMeter` internal).
 
 ---
 
@@ -230,10 +230,10 @@ import { BlockCard } from './BlockCard';
 ```
 
 Notes on `timelineUtils` imports:
-- `clampMinutes` is used directly in `Timeline.tsx`'s `resolvePlacement` callback — it IS imported here.
-- `formatTimeShort` is used in `Timeline.tsx` (hour labels in the grid) — it IS imported here.
+- `clampMinutes` is used directly in `Timeline.tsx`'s `resolvePlacement` callback — imported in `Timeline.tsx`, not in `BlockCard`.
+- `formatTimeShort` is used in **both** `Timeline.tsx` (grid hour labels, workday time buttons) and `BlockCard` (block start-time label) — imported in both files.
 - `getStepMins` is only used in `BlockCard` — NOT imported into `Timeline.tsx`.
-- `formatTime` is only used in `CurrentTimeIndicator` and `AfterHoursVeil` — NOT imported into `Timeline.tsx`.
+- `formatTime` is only used in `CurrentTimeIndicator` and `AfterHoursVeil` — NOT imported into `Timeline.tsx` or `BlockCard`.
 
 **Result:** `Timeline.tsx` drops from ~1430 to ~600 lines.
 
