@@ -34,6 +34,7 @@ import { useTaskActions } from '@/hooks/useTaskActions';
 import { usePlannerSelectors } from '@/hooks/usePlannerSelectors';
 import { useDayCommitState } from '@/hooks/useDayCommitState';
 import { useDayLock } from '@/hooks/useDayLock';
+import { useWeeklyPlanningModal } from '@/hooks/useWeeklyPlanningModal';
 import { useWorkdayPrompts } from '@/hooks/useWorkdayPrompts';
 import {
   createPlannerFieldSetter,
@@ -149,8 +150,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [selectedInboxId, setSelectedInboxId] = useState<string | null>(null);
   const [lastCommitTimestamp, setLastCommitTimestamp] = useState(0);
   const [isInitialized, setIsInitialized] = useState(false);
-  const [weeklyPlanningLastCompleted, setWeeklyPlanningLastCompleted] = useState<string | null>(null);
-  const [isWeeklyPlanningOpen, setIsWeeklyPlanningOpen] = useState(false);
+  const [weeklyPlanningInit, setWeeklyPlanningInit] = useState<string | null | undefined>(undefined);
   const [monthlyPlan, setMonthlyPlanState] = useState<MonthlyPlan | null>(null);
   const [monthlyPlanPrompt, setMonthlyPlanPrompt] = useState(false);
   const [isMonthlyPlanningOpen, setIsMonthlyPlanningOpen] = useState(false);
@@ -166,6 +166,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
   });
 
   const { dayLocked, focusResumePrompt, lockDay, unlockDay, resumeFocusMode, dismissFocusPrompt } = useDayLock();
+  const {
+    isWeeklyPlanningOpen,
+    weeklyPlanningLastCompleted,
+    openWeeklyPlanning,
+    closeWeeklyPlanning,
+    completeWeeklyPlanning,
+  } = useWeeklyPlanningModal({ initialLastCompleted: weeklyPlanningInit ?? null });
 
   const {
     weeklyGoals,
@@ -240,7 +247,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         // Always start on flow view — don't restore previous view
         setActiveView('flow');
         if (stored?.activeSource) setActiveSource(stored.activeSource);
-        if (stored?.weeklyPlanningLastCompleted !== undefined) setWeeklyPlanningLastCompleted(stored.weeklyPlanningLastCompleted ?? null);
+        setWeeklyPlanningInit(stored?.weeklyPlanningLastCompleted ?? null);
         if (stored?.workdayStart) setWorkdayStartState(stored.workdayStart);
         if (stored?.workdayEnd) setWorkdayEndState(stored.workdayEnd);
         if (stored?.monthlyPlan !== undefined) setMonthlyPlanState(stored.monthlyPlan ?? null);
@@ -440,13 +447,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const removeCountdown = useCallback((id: string) => {
     setCountdowns((prev) => prev.filter((c) => c.id !== id));
-  }, []);
-
-  const openWeeklyPlanning = useCallback(() => setIsWeeklyPlanningOpen(true), []);
-  const closeWeeklyPlanning = useCallback(() => setIsWeeklyPlanningOpen(false), []);
-  const completeWeeklyPlanning = useCallback(() => {
-    setWeeklyPlanningLastCompleted(getToday());
-    setIsWeeklyPlanningOpen(false);
   }, []);
 
   const setWorkdayStart = useCallback((hour: number, min: number) => {
