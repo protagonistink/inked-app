@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { X, GripVertical, Play, Check, RefreshCw } from 'lucide-react';
+import { GripVertical, Play, Check, RefreshCw } from 'lucide-react';
 import { useDrag } from 'react-dnd';
 import { differenceInCalendarDays, format, parseISO } from 'date-fns';
 import { useDrop } from 'react-dnd';
@@ -13,7 +13,6 @@ import { useSound } from '@/hooks/useSound';
 import { usePhysicsWarnings } from '@/hooks/usePhysicsWarnings';
 import { useCurrentMinute } from '@/hooks/useCurrentMinute';
 import type { PomodoroState, ScheduleBlock } from '@/types';
-import { GCalIcon } from './AppIcons';
 import { DateHeader } from './DateHeader';
 
 const BASE_HOUR_HEIGHT = 96;
@@ -225,8 +224,10 @@ function BlockCard({
   hourHeight,
   physicsWarning,
   locked = false,
-  colIndex: _colIndex = 0,
-  colCount: _colCount = 1,
+  colIndex = 0,
+  colCount = 1,
+  isSelected = false,
+  onSelect,
 }: {
   block: ScheduleBlock;
   onRemove: () => void;
@@ -244,12 +245,13 @@ function BlockCard({
   locked?: boolean;
   colIndex?: number;
   colCount?: number;
+  isSelected?: boolean;
+  onSelect?: (blockId: string) => void;
 }) {
   const { isFocus } = useTheme();
-  const { plannedTasks, weeklyGoals, setActiveTask, toggleTask, toggleRitualSkipped, viewDate } = useApp();
+  const { plannedTasks, weeklyGoals, setActiveTask, toggleTask, nestTaskInBlock } = useApp();
   const linkedTask = block.linkedTaskId ? plannedTasks.find((task) => task.id === block.linkedTaskId) : null;
   const isDone = linkedTask?.status === 'done';
-  const isRitualBlock = block.id.startsWith('ritual-');
 
   // Dynamic thread color for border-left based on weekly goal
   const goalId = linkedTask?.weeklyGoalId ?? null;
@@ -258,6 +260,26 @@ function BlockCard({
     : goalIndex === 1 ? 'rgba(74,109,140,0.5)'
     : goalIndex === 2 ? 'rgba(145,159,174,0.4)'
     : 'rgba(100,116,139,0.3)';
+  // Highlighter tint — faintest whisper of goal color so text pops
+  const tintColor = goalIndex === 0 ? 'rgba(229,85,71,0.025)'
+    : goalIndex === 1 ? 'rgba(74,109,140,0.025)'
+    : goalIndex === 2 ? 'rgba(145,159,174,0.02)'
+    : block.kind === 'break' ? 'rgba(250,250,250,0.015)'
+    : block.kind === 'hard' ? 'rgba(145,159,174,0.025)'
+    : 'rgba(100,116,139,0.02)';
+  const [{ isNestOver }, nestDropRef] = useDrop<DragItem, void, { isNestOver: boolean }>({
+    accept: DragTypes.TASK,
+    canDrop: () => !locked,
+    collect: (monitor) => ({ isNestOver: monitor.isOver() && monitor.canDrop() }),
+    drop: (item) => {
+      void nestTaskInBlock(item.id, block.id);
+    },
+  });
+
+  const blockRef = useCallback((node: HTMLDivElement | null) => {
+    nestDropRef(node);
+  }, [nestDropRef]);
+
   const [{ isDragging }, dragRef, previewRef] = useDrag<DragItem, unknown, { isDragging: boolean }>({
     type: DragTypes.BLOCK,
     canDrag: !locked && !block.readOnly && !isDone && Boolean(block.linkedTaskId),
@@ -266,7 +288,7 @@ function BlockCard({
       title: block.title,
       blockId: block.id,
       linkedTaskId: block.linkedTaskId,
-      sourceType: block.source,
+      sourceType: linkedTask?.source ?? block.source,
     },
     collect: (monitor) => ({ isDragging: monitor.isDragging() }),
   });
@@ -279,7 +301,6 @@ function BlockCard({
   const didDragRef = useRef(false);
   const top = timeToTop(((draft?.startHour ?? block.startHour) * 60) + (draft?.startMin ?? block.startMin), dayStartMins, hourHeight);
   const height = ((draft?.durationMins ?? block.durationMins) / 60) * hourHeight;
-  const isShortBlock = height < 110;
   const actualLabel = actualMins > 0 ? formatRoundedHours(actualMins, true) : null;
 
   // Determine block variant class
@@ -374,11 +395,9 @@ function BlockCard({
     if (didDragRef.current) { didDragRef.current = false; return; }
     const target = e.target as HTMLElement;
     if (target.closest('button')) return;
-    if (locked || !block.linkedTaskId || block.readOnly || isDone) return;
-    setActiveTask(block.linkedTaskId);
-    void window.api.window.showPomodoro();
-    void window.api.pomodoro.start(block.linkedTaskId, block.title);
-    void window.api.window.activate();
+    e.stopPropagation(); // Prevent grid from deselecting immediately
+    // Select/deselect this block
+    onSelect?.(isSelected ? '' : block.id);
   }
 
   function handleToggleTask(event: React.MouseEvent<HTMLButtonElement>) {
@@ -389,32 +408,47 @@ function BlockCard({
 
   return (
     <div
+      ref={blockRef}
       data-task-id={block.linkedTaskId || undefined}
       onMouseDown={beginDrag}
       onClick={handleClick}
       className={cn(
         blockVariant,
-        'animate-fade-in absolute left-4 right-4 overflow-hidden rounded-[8px] p-4 flex flex-col gap-3 transition-all duration-300 group/block',
+        'animate-fade-in absolute overflow-hidden flex flex-col gap-1 transition-all duration-300 group/block',
         isFocus && block.kind !== 'hard' && 'focus-block-card',
         stagger === 1 && 'stagger-2',
         stagger === 2 && 'stagger-3',
         stagger === 3 && 'stagger-4',
         isDragging && 'opacity-30 scale-[0.98]',
         isDone && 'opacity-70 saturate-[0.8]',
-        isNow && !isDragging && 'ring-1 ring-active/40'
+        isSelected && 'ring-1 ring-accent-warm/50',
+        isNow && !isDragging && !isSelected && 'ring-1 ring-active/40',
+        isNestOver && 'ring-2 ring-accent-warm/40'
       )}
-      style={{ top: `${top}px`, height: `${height}px`, borderLeftColor: block.kind === 'focus' ? threadColor : undefined }}
+      style={{
+        top: `${top}px`,
+        height: `${height}px`,
+        left: colCount > 1 ? `calc(${(colIndex * 100) / colCount}% + 4px)` : '4px',
+        right: colCount > 1 ? `calc(${((colCount - colIndex - 1) * 100) / colCount}% + 4px)` : '4px',
+        borderLeftColor: block.kind === 'focus' ? threadColor : undefined,
+        backgroundColor: blockVariant !== 't-draft' ? tintColor : undefined,
+        zIndex: isSelected ? 6 : isNow ? 5 : (colIndex + 1),
+      }}
     >
-      {/* Inked badge for t-inked blocks */}
-      {blockVariant === 't-inked' && block.linkedTaskId && (
-        <div className="flex items-start justify-between mb-2">
-          <span className="inked-badge">Inked</span>
-          <span className="font-sans text-[9px] tracking-[0.12em] uppercase text-text-muted/35">
-            {block.durationMins} mins
-          </span>
-        </div>
+      {/* Drag handle to return block to sidebar */}
+      {!locked && !block.readOnly && !isDone && block.linkedTaskId && (
+        <button
+          ref={dragRef}
+          onMouseDown={(event) => {
+            event.preventDefault();
+            event.stopPropagation();
+          }}
+          className="absolute top-2 left-2 p-1 rounded-md text-text-muted/60 hover:text-text-primary hover:bg-bg-card cursor-grab active:cursor-grabbing opacity-0 group-hover/block:opacity-100 transition-all z-10"
+          title="Drag back to plan"
+        >
+          <GripVertical className="w-3 h-3" />
+        </button>
       )}
-
       {!locked && !block.readOnly && block.linkedTaskId && !isDone && (
         <button
           onMouseDown={(event) => {
@@ -422,7 +456,7 @@ function BlockCard({
             event.stopPropagation();
           }}
           onClick={startFocus}
-          className="absolute top-2 right-16 rounded-md bg-black/15 p-1 text-text-muted/80 hover:text-accent-warm hover:bg-bg-card opacity-100 md:opacity-70 md:group-hover/block:opacity-100 transition-all"
+          className="absolute top-2 right-9 rounded-md bg-black/15 p-1 text-text-muted/80 hover:text-accent-warm hover:bg-bg-card opacity-0 group-hover/block:opacity-100 transition-all"
           title="Start focus"
         >
           <Play className="w-3 h-3 fill-current" />
@@ -436,93 +470,46 @@ function BlockCard({
           }}
           onClick={handleToggleTask}
           className={cn(
-            'absolute top-2 right-9 rounded-md p-1 transition-all',
+            'absolute top-2 right-2 rounded-md p-1 transition-all',
             isDone
               ? 'bg-accent-warm/18 text-accent-warm opacity-100'
-              : 'bg-black/15 text-text-muted/80 opacity-100 md:opacity-70 md:group-hover/block:opacity-100 hover:text-text-primary hover:bg-bg-card'
+              : 'bg-black/15 text-text-muted/80 opacity-0 group-hover/block:opacity-100 hover:text-text-primary hover:bg-bg-card'
           )}
           title={isDone ? 'Mark incomplete' : 'Mark done'}
         >
           <Check className="w-3 h-3" />
         </button>
       )}
-      {!locked && (!block.readOnly || isRitualBlock) && (
-        <button
-          onMouseDown={(event) => {
-            event.preventDefault();
-            event.stopPropagation();
-          }}
-          onClick={(e) => {
-            e.stopPropagation();
-            if (isRitualBlock) {
-              toggleRitualSkipped(block.id.slice('ritual-'.length), format(viewDate, 'yyyy-MM-dd'));
-              return;
-            }
-            onRemove();
-          }}
-          title={isRitualBlock ? 'Skip this ritual for the day' : 'Remove from schedule'}
-          className="absolute top-2 right-2 p-1 rounded-md text-text-muted hover:text-text-primary hover:bg-bg-card opacity-0 group-hover/block:opacity-100 transition-all"
-        >
-          <X className="w-3 h-3" />
-        </button>
-      )}
 
-      <div className="relative z-10 flex items-start gap-2 pr-6">
-        {!locked && !block.readOnly && !isDone && (
-        <button
-          ref={dragRef}
-          onMouseDown={(event) => {
-            event.preventDefault();
-            event.stopPropagation();
-          }}
-          className={cn(
-              'mt-0.5 -ml-1 rounded-md text-text-muted/80 hover:text-text-primary hover:bg-bg-card cursor-grab active:cursor-grabbing transition-all',
-              isShortBlock ? 'p-1' : 'px-1.5 py-1 flex items-center gap-1.5'
-            )}
-            title="Drag back to commit list"
-        >
-            <GripVertical className="w-3 h-3" />
-            {!isShortBlock && <span className="text-[10px] uppercase tracking-[0.14em]">Return</span>}
-          </button>
-        )}
+      <div className="relative z-10 flex items-start pr-6">
         <h4 className={cn(
-          'truncate focus-editorial font-display italic text-[16px] leading-snug',
-          isDone ? 'text-text-muted line-through' : 'text-[#FAFAFA]/80'
+          'truncate focus-editorial font-display italic text-[16px] leading-snug flex-1',
+          isDone ? 'text-text-muted line-through' : 'text-slate-100'
         )}>{block.title}</h4>
-      </div>
-      <div className="relative z-10 text-[10px] text-[rgba(148,163,184,0.5)] tracking-wider whitespace-nowrap">
-        {formatTime(block.startHour, block.startMin)} - {formatTime(
-          block.startHour + Math.floor((block.startMin + block.durationMins) / 60),
-          (block.startMin + block.durationMins) % 60
-        )}
-      </div>
-      <div className="relative z-10 flex items-center gap-2 text-[10px] uppercase tracking-wider text-text-muted/70 whitespace-nowrap focus-fade-meta">
-        <span className="flex items-center gap-1.5">
-          {block.kind === 'hard' ? (
-            <GCalIcon className="w-4 h-4 shrink-0 text-accent-warm/40" />
-          ) : block.kind === 'break' ? (
-            'ritual'
-          ) : (
-            'focus block'
+        <span className="shrink-0 ml-2 flex items-center gap-1.5 text-[10px] text-[rgba(148,163,184,0.3)] tracking-wider whitespace-nowrap">
+          {physicsWarning && (
+            <span
+              className="inline-block w-[5px] h-[5px] rounded-full shrink-0"
+              style={{ background: 'rgba(245,158,11,0.55)' }}
+              title={physicsWarning}
+            />
           )}
+          {formatTimeShort(block.startHour, block.startMin)}
         </span>
+      </div>
+      <div className="relative z-10 flex items-center gap-2 focus-fade-meta">
         {isDone && (
-          <span className="flex items-center gap-1 rounded-full border border-white/6 bg-black/15 px-2 py-0.5 normal-case tracking-normal text-text-muted/90">
+          <span className="flex items-center gap-1 rounded-full border border-white/6 bg-black/15 px-2 py-0.5 text-[10px] normal-case tracking-normal text-text-muted/90">
             <Check className="h-3 w-3" />
             done
           </span>
         )}
         {actualLabel && block.kind === 'focus' && (
-          <span className="rounded-full border border-white/6 bg-black/15 px-2 py-0.5 normal-case tracking-normal text-text-muted/90">
+          <span className="rounded-full border border-white/6 bg-black/15 px-2 py-0.5 text-[10px] normal-case tracking-normal text-text-muted/90">
             {actualLabel} worked
           </span>
         )}
       </div>
-
-      {/* Physics warning */}
-      {physicsWarning && (
-        <div className="physics-warning">{physicsWarning}</div>
-      )}
 
       {/* AI Breakdown for focus blocks */}
       {block.kind === 'focus' && block.linkedTaskId && (
@@ -571,7 +558,7 @@ function BlockCard({
           </button>
         </div>
       )}
-      {!locked && !block.readOnly && !isDone && block.linkedTaskId && block.durationMins >= 15 && (() => {
+      {!locked && !block.readOnly && !isDone && block.linkedTaskId && block.durationMins >= 15 && !onUpdateDuration && (() => {
         return (
           <div
             onMouseDown={(e) => e.stopPropagation()}
@@ -856,6 +843,7 @@ export function Timeline() {
     removeScheduleBlock,
     updateRitualEstimate,
     acceptProposal,
+    toggleRitualSkipped,
     currentBlock,
     workdayStart,
     setWorkdayStart,
@@ -940,12 +928,90 @@ export function Timeline() {
 
     return intervals;
   }, [dayCommitInfo.state, requestedDayEndMins, scheduleBlocks, dayStartMins]);
+
+  // Overlap layout: when blocks share the same time slot, split them into columns
+  const overlapLayout = useMemo(() => {
+    const layout = new Map<string, { colIndex: number; colCount: number }>();
+    const sorted = [...scheduleBlocks].sort((a, b) => blockStartMinutes(a) - blockStartMinutes(b));
+    // Group blocks that overlap in time
+    const groups: ScheduleBlock[][] = [];
+    let curGroup: ScheduleBlock[] = [];
+    let curGroupEnd = 0;
+    for (const blk of sorted) {
+      const s = blockStartMinutes(blk);
+      const e = blockEndMinutes(blk);
+      if (curGroup.length === 0 || s < curGroupEnd) {
+        curGroup.push(blk);
+        curGroupEnd = Math.max(curGroupEnd, e);
+      } else {
+        groups.push(curGroup);
+        curGroup = [blk];
+        curGroupEnd = e;
+      }
+    }
+    if (curGroup.length > 0) groups.push(curGroup);
+    // Assign columns per group
+    for (const grp of groups) {
+      if (grp.length === 1) {
+        layout.set(grp[0].id, { colIndex: 0, colCount: 1 });
+        continue;
+      }
+      const cols: number[][] = [];
+      for (const blk of grp) {
+        const s = blockStartMinutes(blk);
+        let placed = false;
+        for (let c = 0; c < cols.length; c++) {
+          if (cols[c][cols[c].length - 1] <= s) {
+            cols[c].push(blockEndMinutes(blk));
+            layout.set(blk.id, { colIndex: c, colCount: grp.length });
+            placed = true;
+            break;
+          }
+        }
+        if (!placed) {
+          cols.push([blockEndMinutes(blk)]);
+          layout.set(blk.id, { colIndex: cols.length - 1, colCount: grp.length });
+        }
+      }
+      const actualCols = cols.length;
+      for (const blk of grp) {
+        const entry = layout.get(blk.id)!;
+        entry.colCount = actualCols;
+      }
+    }
+    return layout;
+  }, [scheduleBlocks]);
+
   const [isEditingStart, setIsEditingStart] = useState(false);
   const [isEditingEnd, setIsEditingEnd] = useState(false);
   const [timeLeft, setTimeLeft] = useState('');
   const [minutesPastClose, setMinutesPastClose] = useState(0);
   const [livePomodoro, setLivePomodoro] = useState<PomodoroState | null>(null);
   const [inkMessage, setInkMessage] = useState('');
+  const [selectedBlockId, setSelectedBlockId] = useState<string | null>(null);
+
+  // Keyboard delete for selected block
+  useEffect(() => {
+    if (!selectedBlockId || timelineLocked) return;
+    function handleKeyDown(e: KeyboardEvent) {
+      if (e.key === 'Backspace' || e.key === 'Delete') {
+        e.preventDefault();
+        const block = scheduleBlocks.find((b) => b.id === selectedBlockId);
+        if (!block) return;
+        if (block.id.startsWith('ritual-')) {
+          toggleRitualSkipped(block.id.slice('ritual-'.length), format(viewDate, 'yyyy-MM-dd'));
+        } else if (!block.readOnly) {
+          removeScheduleBlock(block.id);
+        }
+        setSelectedBlockId(null);
+      }
+      if (e.key === 'Escape') {
+        setSelectedBlockId(null);
+      }
+    }
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [selectedBlockId, timelineLocked, scheduleBlocks, removeScheduleBlock, toggleRitualSkipped, viewDate]);
 
   useEffect(() => {
     if (!isTodayView) {
@@ -1036,6 +1102,18 @@ export function Timeline() {
 
   const currentBlockId = currentBlock?.id ?? null;
 
+  // Daily Arc summary
+  const dailyArc = useMemo(() => {
+    const focusBlocks = scheduleBlocks.filter((b) => b.kind === 'focus');
+    const ritualBlocks = scheduleBlocks.filter((b) => b.kind === 'break');
+    const totalMins = scheduleBlocks.reduce((sum, b) => sum + b.durationMins, 0);
+    const parts: string[] = [];
+    if (focusBlocks.length > 0) parts.push(`${focusBlocks.length} Focus`);
+    if (ritualBlocks.length > 0) parts.push(`${ritualBlocks.length} Ritual`);
+    if (totalMins > 0) parts.push(formatRoundedHours(totalMins, true));
+    return parts.join(' \u00b7 ');
+  }, [scheduleBlocks]);
+
   const beginWorkdayEndDrag = useCallback((event: React.MouseEvent<HTMLElement>) => {
     event.preventDefault();
     event.stopPropagation();
@@ -1088,11 +1166,19 @@ export function Timeline() {
       targetBlockId
     );
 
+    // Apply cascade updates — push subsequent blocks so nothing overlaps
+    for (const [blockId, update] of cascadePlan.cascadeUpdates) {
+      const existing = scheduleBlocksRef.current.find((b) => b.id === blockId);
+      if (existing) {
+        void updateScheduleBlock(blockId, update.startHour, update.startMin, existing.durationMins);
+      }
+    }
+
     return {
       startHour: cascadePlan.startHour,
       startMin: cascadePlan.startMin,
     };
-  }, [dayEndMins, dayStartMins]);
+  }, [dayEndMins, dayStartMins, updateScheduleBlock]);
 
   const [{ isOver, ghostBlock }, dropRef] = useDrop<DragItem, void, { isOver: boolean; ghostBlock: { startHour: number; startMin: number } | null }>({
     accept: timelineLocked ? [] : DragTypes.TASK,
@@ -1117,6 +1203,7 @@ export function Timeline() {
       };
     },
     drop: (item, monitor) => {
+      if (monitor.didDrop()) return; // BlockCard already handled this drop
       const offset = monitor.getClientOffset();
       if (!offset || !gridRef.current) return;
 
@@ -1159,7 +1246,11 @@ export function Timeline() {
       <div className="sticky top-0 z-20 px-8 pt-6 pb-5" style={{ background: 'rgba(10, 10, 10, 0.85)', backdropFilter: 'blur(16px)' }}>
         <div className="flex items-end justify-between">
           <DateHeader />
-          <div />
+          {dailyArc && (
+            <span className="text-[11px] text-slate-500 tracking-wider font-mono pb-1">
+              {dailyArc}
+            </span>
+          )}
         </div>
         {inkMessage && isTodayView && (
           <p className="font-display mt-4 leading-relaxed text-[15px] font-light text-[#919fae]/50">
@@ -1268,6 +1359,7 @@ export function Timeline() {
           (gridRef as React.MutableRefObject<HTMLDivElement | null>).current = el;
         }}
         id="timeline-grid"
+        onClick={(e) => { if (!(e.target as HTMLElement).closest('[data-task-id]')) setSelectedBlockId(null); }}
         className={cn('dot-grid flex-1 overflow-y-auto relative hide-scrollbar transition-colors min-w-0', isOver && 'bg-accent-warm/[0.035]')}
       >
         <div className="w-full max-w-4xl mx-auto relative" style={{ height: `${totalHeight}px` }}>
@@ -1340,6 +1432,10 @@ export function Timeline() {
                 hourHeight={hourHeight}
                 physicsWarning={getWarning(block)}
                 locked={timelineLocked}
+                colIndex={overlapLayout.get(block.id)?.colIndex ?? 0}
+                colCount={overlapLayout.get(block.id)?.colCount ?? 1}
+                isSelected={selectedBlockId === block.id}
+                onSelect={(id) => setSelectedBlockId(id || null)}
               />
             ))}
             {openIntervals.map((interval, i) => (
