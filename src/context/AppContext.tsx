@@ -22,7 +22,7 @@ import type {
   TimeLogEntry,
   WeeklyGoal,
 } from '@/types';
-import { getToday, mergeScheduleBlocksWithRituals } from '@/lib/planner';
+import { mergeScheduleBlocksWithRituals } from '@/lib/planner';
 import {
   loadPlannerState,
   usePlannerPersistence,
@@ -33,6 +33,7 @@ import { useScheduleManager } from '@/hooks/useScheduleManager';
 import { useTaskActions } from '@/hooks/useTaskActions';
 import { usePlannerSelectors } from '@/hooks/usePlannerSelectors';
 import { useDayCommitState } from '@/hooks/useDayCommitState';
+import { useCollectionActions } from '@/hooks/useCollectionActions';
 import { useDayLock } from '@/hooks/useDayLock';
 import { useMonthlyPlanning } from '@/hooks/useMonthlyPlanning';
 import { useWeeklyPlanningModal } from '@/hooks/useWeeklyPlanningModal';
@@ -211,6 +212,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const setWorkdayStartState = useCallback(createPlannerFieldSetter(dispatchPlanner, 'workdayStart'), []);
   const setWorkdayEndState = useCallback(createPlannerFieldSetter(dispatchPlanner, 'workdayEnd'), []);
   const setDayEntries = useCallback(createPlannerFieldSetter(dispatchPlanner, 'dayEntries'), []);
+
+  const {
+    addRitual,
+    removeRitual,
+    toggleRitualComplete,
+    updateRitualEstimate,
+    addCountdown,
+    removeCountdown,
+  } = useCollectionActions({ setRituals, setCountdowns });
 
   const viewDateValue = useMemo(() => new Date(`${viewDate}T12:00:00`), [viewDate]);
 
@@ -391,44 +401,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
       next.splice(toIndex, 0, moved);
       return next;
     });
-  }, []);
-
-  const addRitual = useCallback((title: string) => {
-    if (!title.trim()) return;
-    setRituals((prev) => [...prev, { id: `ritual-${Date.now()}`, title: title.trim(), completedDates: [] }]);
-  }, []);
-
-  const removeRitual = useCallback((id: string) => {
-    setRituals((prev) => prev.filter((r) => r.id !== id));
-  }, []);
-
-  const toggleRitualComplete = useCallback((id: string) => {
-    const today = getToday();
-    setRituals((prev) => prev.map((r) => {
-      if (r.id !== id) return r;
-      const already = r.completedDates.includes(today);
-      return {
-        ...r,
-        completedDates: already
-          ? r.completedDates.filter((d) => d !== today)
-          : [...r.completedDates, today],
-      };
-    }));
-  }, []);
-
-  const updateRitualEstimate = useCallback((id: string, mins: number) => {
-    setRituals((prev) =>
-      prev.map((r) => (r.id === id ? { ...r, estimateMins: mins } : r))
-    );
-  }, [setRituals]);
-
-  const addCountdown = useCallback((title: string, dueDate: string) => {
-    if (!title.trim() || !dueDate) return;
-    setCountdowns((prev) => [...prev, { id: `countdown-${Date.now()}`, title: title.trim(), dueDate }]);
-  }, []);
-
-  const removeCountdown = useCallback((id: string) => {
-    setCountdowns((prev) => prev.filter((c) => c.id !== id));
   }, []);
 
   const setWorkdayStart = useCallback((hour: number, min: number) => {
