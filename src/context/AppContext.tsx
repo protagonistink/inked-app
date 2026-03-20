@@ -34,6 +34,7 @@ import { useTaskActions } from '@/hooks/useTaskActions';
 import { usePlannerSelectors } from '@/hooks/usePlannerSelectors';
 import { useDayCommitState } from '@/hooks/useDayCommitState';
 import { useDayLock } from '@/hooks/useDayLock';
+import { useMonthlyPlanning } from '@/hooks/useMonthlyPlanning';
 import { useWeeklyPlanningModal } from '@/hooks/useWeeklyPlanningModal';
 import { useWorkdayPrompts } from '@/hooks/useWorkdayPrompts';
 import {
@@ -151,9 +152,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [lastCommitTimestamp, setLastCommitTimestamp] = useState(0);
   const [isInitialized, setIsInitialized] = useState(false);
   const [weeklyPlanningInit, setWeeklyPlanningInit] = useState<string | null | undefined>(undefined);
-  const [monthlyPlan, setMonthlyPlanState] = useState<MonthlyPlan | null>(null);
-  const [monthlyPlanPrompt, setMonthlyPlanPrompt] = useState(false);
-  const [isMonthlyPlanningOpen, setIsMonthlyPlanningOpen] = useState(false);
+  const [monthlyPlanInit, setMonthlyPlanInit] = useState<MonthlyPlan | null | undefined>(undefined);
   const [workdayPromptsInit, setWorkdayPromptsInit] = useState<{
     startShownDate: string | null;
     endShownDate: string | null;
@@ -173,6 +172,18 @@ export function AppProvider({ children }: { children: ReactNode }) {
     closeWeeklyPlanning,
     completeWeeklyPlanning,
   } = useWeeklyPlanningModal({ initialLastCompleted: weeklyPlanningInit ?? null });
+  const {
+    monthlyPlan,
+    monthlyPlanPrompt,
+    isMonthlyPlanningOpen,
+    setMonthlyPlan,
+    dismissMonthlyPlanPrompt,
+    openMonthlyPlanning,
+    closeMonthlyPlanning,
+  } = useMonthlyPlanning({
+    isInitialized,
+    initialMonthlyPlan: monthlyPlanInit ?? null,
+  });
 
   const {
     weeklyGoals,
@@ -250,7 +261,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         setWeeklyPlanningInit(stored?.weeklyPlanningLastCompleted ?? null);
         if (stored?.workdayStart) setWorkdayStartState(stored.workdayStart);
         if (stored?.workdayEnd) setWorkdayEndState(stored.workdayEnd);
-        if (stored?.monthlyPlan !== undefined) setMonthlyPlanState(stored.monthlyPlan ?? null);
+        setMonthlyPlanInit(stored?.monthlyPlan ?? null);
 
         const [startShown, endShown] = await Promise.all([
           window.api.store.get('startOfDay.shownDate'),
@@ -272,19 +283,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
     loadState();
   }, []);
-
-  useEffect(() => {
-    if (!isInitialized) return;
-    const currentMonth = new Date().toISOString().slice(0, 7); // "2026-03"
-    if (!monthlyPlan || monthlyPlan.month !== currentMonth) {
-      void window.api.store.get('monthlyPlanDismissedDate').then((dismissed) => {
-        const today = new Date().toISOString().split('T')[0];
-        if (dismissed !== today) {
-          setMonthlyPlanPrompt(true);
-        }
-      });
-    }
-  }, [isInitialized, monthlyPlan]);
 
   // Use primitive minutes to avoid re-firing when reducer creates new object references
   const workdayStartMinutes = workdayStart.hour * 60 + workdayStart.min;
@@ -417,22 +415,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
       };
     }));
   }, []);
-
-  const setMonthlyPlan = useCallback((plan: MonthlyPlan) => {
-    const planWithTimestamp: MonthlyPlan = { ...plan, completedAt: new Date().toISOString() };
-    setMonthlyPlanState(planWithTimestamp);
-    setMonthlyPlanPrompt(false);
-    setIsMonthlyPlanningOpen(false);
-  }, []);
-
-  const dismissMonthlyPlanPrompt = useCallback(() => {
-    const today = new Date().toISOString().split('T')[0];
-    void window.api.store.set('monthlyPlanDismissedDate', today);
-    setMonthlyPlanPrompt(false);
-  }, []);
-
-  const openMonthlyPlanning = useCallback(() => setIsMonthlyPlanningOpen(true), []);
-  const closeMonthlyPlanning = useCallback(() => setIsMonthlyPlanningOpen(false), []);
 
   const updateRitualEstimate = useCallback((id: string, mins: number) => {
     setRituals((prev) =>
