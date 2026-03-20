@@ -74,11 +74,13 @@ interface AppContextValue {
   selectedInboxId: string | null;
   selectInboxItem: (id: string) => void;
   addLocalTask: (title: string, goalId?: string, targetDate?: string) => string;
+  addInboxTask: (title: string) => string;
   bringForward: (taskId: string, goalId?: string, targetDate?: string) => void;
   lastCommitTimestamp: number;
   assignTaskToGoal: (taskId: string, goalId: string) => void;
   moveForward: (taskId: string) => Promise<void>;
   releaseTask: (taskId: string) => Promise<void>;
+  returnTaskToInbox: (taskId: string) => Promise<void>;
   dropTask: (taskId: string) => void;
   toggleTask: (id: string) => Promise<void>;
   setActiveTask: (id: string) => void;
@@ -89,6 +91,8 @@ interface AppContextValue {
   unscheduleTaskBlock: (id: string, goalId?: string) => Promise<void>;
   clearFocusBlocks: () => Promise<void>;
   acceptProposal: (blockId: string) => Promise<void>;
+  nestTaskInBlock: (taskId: string, targetBlockId: string) => Promise<void>;
+  unnestTaskFromBlock: (taskId: string, blockId: string) => void;
   currentBlock: ScheduleBlock | null;
   nextBlock: ScheduleBlock | null;
   currentTask: PlannedTask | null;
@@ -99,6 +103,7 @@ interface AppContextValue {
   rituals: DailyRitual[];
   addRitual: (title: string) => void;
   removeRitual: (id: string) => void;
+  toggleRitualSkipped: (id: string, date: string) => void;
   toggleRitualComplete: (id: string) => void;
   countdowns: Countdown[];
   addCountdown: (title: string, dueDate: string) => void;
@@ -216,6 +221,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const {
     addRitual,
     removeRitual,
+    toggleRitualSkipped,
     toggleRitualComplete,
     updateRitualEstimate,
     addCountdown,
@@ -360,8 +366,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (!isInitialized) return;
-    setScheduleBlocks((prev) => mergeScheduleBlocksWithRituals(prev, rituals, workdayStart));
-  }, [isInitialized, rituals, setScheduleBlocks, workdayStart]);
+    setScheduleBlocks((prev) => mergeScheduleBlocksWithRituals(prev, rituals, workdayStart, viewDate));
+  }, [isInitialized, rituals, setScheduleBlocks, viewDate, workdayStart]);
 
   const addWeeklyGoal = useCallback((title: string, color = 'bg-text-muted') => {
     if (!title.trim() || weeklyGoals.length >= MAX_WEEKLY_GOALS) return false;
@@ -434,9 +440,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
     unnestTask,
     bringForward,
     addLocalTask,
+    addInboxTask,
     assignTaskToGoal,
     moveForward,
     releaseTask,
+    returnTaskToInbox,
     toggleTask,
     setActiveTask,
     updateTaskEstimate,
@@ -456,6 +464,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
     scheduleTaskBlock,
     updateScheduleBlock,
     removeScheduleBlock,
+    nestTaskInBlock,
+    unnestTaskFromBlock,
     unscheduleTaskBlock,
     clearFocusBlocks,
     acceptProposal,
@@ -541,7 +551,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
       mergeScheduleBlocksWithRituals(
         prev.filter((block) => block.readOnly || block.kind !== 'focus'),
         rituals,
-        workdayStart
+        workdayStart,
+        viewDate
       )
     );
     setPlannedTasks((prev) =>
@@ -554,7 +565,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setDailyPlan((prev) => ({ ...prev, committedTaskIds: [] }));
     setLastCommitTimestamp(0);
     unlockDay();
-  }, [rituals, scheduleBlocks, setDailyPlan, setLastCommitTimestamp, setPlannedTasks, setScheduleBlocks, unlockDay, workdayStart]);
+  }, [rituals, scheduleBlocks, setDailyPlan, setLastCommitTimestamp, setPlannedTasks, setScheduleBlocks, unlockDay, viewDate, workdayStart]);
 
   return (
     <AppContext.Provider
@@ -583,11 +594,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
         selectedInboxId,
         selectInboxItem,
         addLocalTask,
+        addInboxTask,
         bringForward,
         lastCommitTimestamp,
         assignTaskToGoal,
         moveForward,
         releaseTask,
+        returnTaskToInbox,
         dropTask,
         toggleTask,
         setActiveTask,
@@ -598,6 +611,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
         unscheduleTaskBlock,
         clearFocusBlocks,
         acceptProposal,
+        nestTaskInBlock,
+        unnestTaskFromBlock,
         currentBlock,
         nextBlock,
         currentTask,
@@ -608,6 +623,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         rituals,
         addRitual,
         removeRitual,
+        toggleRitualSkipped,
         toggleRitualComplete,
         countdowns,
         addCountdown,
