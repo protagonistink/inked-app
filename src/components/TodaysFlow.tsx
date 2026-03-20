@@ -231,6 +231,7 @@ export function TodaysFlow({ collapsed = false }: { collapsed?: boolean }) {
                 nestTask={nestTask}
                 unnestTask={unnestTask}
                 deadlineInfo={deadlineByGoalId.get(goal.id)}
+                nestedInBlockIds={nestedInBlockIds}
               />
             );
           })}
