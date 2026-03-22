@@ -36,6 +36,7 @@
 | `src/components/MoneyView.tsx` | Main Money sidebar view (3 states) |
 | `src/components/MoneyOnboarding.tsx` | Unconnected state UI |
 | `src/components/MoneyDashboard.tsx` | Active state — 5 sections |
+| `electron/plaid-link.ts` | Plaid Link BrowserWindow popup for bank connection |
 | `src/components/FinanceSettings.tsx` | Finance section in settings panel |
 
 ### Modified files
@@ -677,6 +678,169 @@ git commit -m "feat: add Plaid SDK wrapper for balances, recurring, category spe
 
 ---
 
+## Task 5b: Create Plaid Link BrowserWindow handler
+
+**Files:**
+- Create: `electron/plaid-link.ts`
+
+Plaid Link is a hosted JavaScript widget, not an OAuth redirect. It requires a BrowserWindow that loads Plaid's Link initialization page and listens for the success callback.
+
+- [ ] **Step 1: Implement electron/plaid-link.ts**
+
+```ts
+import { BrowserWindow, ipcMain } from 'electron';
+
+/**
+ * Opens a child BrowserWindow that loads Plaid Link.
+ * On success, Plaid Link calls a JavaScript callback with the public_token.
+ * We intercept this via a preload script that sends the token back to the main process.
+ *
+ * Flow:
+ * 1. Main process creates a BrowserWindow loading a local HTML file
+ * 2. The HTML file loads the Plaid Link SDK and initializes with the link token
+ * 3. On success, the page calls ipcRenderer.send('plaid-link:success', publicToken)
+ * 4. Main process receives the token and resolves the promise
+ */
+export function openPlaidLink(linkToken: string): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const win = new BrowserWindow({
+      width: 500,
+      height: 700,
+      title: 'Connect your bank',
+      webPreferences: {
+        contextIsolation: false,
+        nodeIntegration: true,
+      },
+    });
+
+    // Load an inline HTML page that initializes Plaid Link
+    const html = `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <script src="https://cdn.plaid.com/link/v2/stable/link-initialize.js"></script>
+      </head>
+      <body>
+        <script>
+          const { ipcRenderer } = require('electron');
+          const handler = Plaid.create({
+            token: '${linkToken}',
+            onSuccess: (publicToken) => {
+              ipcRenderer.send('plaid-link:success', publicToken);
+            },
+            onExit: (err) => {
+              ipcRenderer.send('plaid-link:exit', err ? err.error_message : null);
+            },
+          });
+          handler.open();
+        </script>
+      </body>
+      </html>
+    `;
+
+    win.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(html)}`);
+
+    const onSuccess = (_event: unknown, publicToken: string) => {
+      cleanup();
+      win.close();
+      resolve(publicToken);
+    };
+
+    const onExit = (_event: unknown, errorMessage: string | null) => {
+      cleanup();
+      win.close();
+      if (errorMessage) reject(new Error(errorMessage));
+      else reject(new Error('User cancelled'));
+    };
+
+    function cleanup() {
+      ipcMain.removeListener('plaid-link:success', onSuccess);
+      ipcMain.removeListener('plaid-link:exit', onExit);
+    }
+
+    ipcMain.once('plaid-link:success', onSuccess);
+    ipcMain.once('plaid-link:exit', onExit);
+
+    win.on('closed', () => {
+      cleanup();
+      reject(new Error('Window closed'));
+    });
+  });
+}
+```
+
+**Note:** The `contextIsolation: false` + `nodeIntegration: true` is intentional for this narrow popup — it only loads Plaid's CDN script and sends one IPC message. The main app windows keep `contextIsolation: true`. If CSP blocks the Plaid CDN script, fall back to loading the HTML from a local file in `public/plaid-link.html`.
+
+- [ ] **Step 2: Wire the Plaid Link popup into finance:plaid-link handler**
+
+In `electron/finance.ts`, update the `finance:plaid-link` handler to also open the window and handle the full flow:
+
+```ts
+import { openPlaidLink } from './plaid-link';
+
+// Replace the existing finance:plaid-link handler:
+ipcMain.handle('finance:plaid-link', async () => {
+  try {
+    const linkToken = await plaid.createLinkToken();
+    const publicToken = await openPlaidLink(linkToken);
+    await plaid.exchangePublicToken(publicToken);
+    await syncPlaidData();
+    return { success: true };
+  } catch (error) {
+    console.error('finance:plaid-link error:', error);
+    return { success: false };
+  }
+});
+```
+
+This combines link token creation, BrowserWindow popup, token exchange, and initial sync into one IPC call. The renderer just calls `window.api.finance.plaidLink()` and gets back success/failure.
+
+- [ ] **Step 3: Update FinanceAPI type and preload to reflect combined flow**
+
+In `src/types/electron.d.ts`, update the `FinanceAPI`:
+
+```ts
+interface FinanceAPI {
+  getState: () => Promise<import('../engine/types').EngineState | null>;
+  refresh: () => Promise<import('../engine/types').EngineState | null>;
+  plaidLink: () => Promise<{ success: boolean }>; // Opens popup, handles full flow
+  plaidExchange: (publicToken: string) => Promise<{ success: boolean }>; // Manual fallback
+}
+```
+
+- [ ] **Step 4: Update MoneyView Connect Bank button**
+
+In `src/components/MoneyView.tsx`, update the onClick handler:
+
+```tsx
+onClick={async () => {
+  try {
+    const result = await window.api.finance.plaidLink();
+    if (result.success) {
+      setConfigured(true);
+      // Trigger data fetch
+    }
+  } catch (error) {
+    console.error('Failed to connect bank:', error);
+  }
+}}
+```
+
+- [ ] **Step 5: Verify build**
+
+```bash
+npm run build
+```
+
+- [ ] **Step 6: Commit**
+
+```bash
+git add electron/plaid-link.ts electron/finance.ts src/types/electron.d.ts src/components/MoneyView.tsx
+git commit -m "feat: add Plaid Link BrowserWindow popup for bank connection"
+```
+
+---
+
 ## Task 6: Create IPC finance handlers
 
 **Files:**
@@ -804,16 +968,66 @@ async function syncPlaidData(): Promise<void> {
   if (balances.length > 0 && balances[0].institution) {
     store.set('plaid.institutionName', balances[0].institution);
   }
+
+  // Sync recurring → obligations
+  const accountIds = balances.map(b => b.id);
+  if (accountIds.length > 0) {
+    const recurring = await plaid.getRecurring(accountIds);
+    for (const stream of recurring.outflow) {
+      db.insert(obligations).values({
+        id: `plaid-${stream.stream_id}`,
+        name: stream.description ?? stream.merchant_name ?? 'Unknown',
+        amount: Math.abs(stream.average_amount?.amount ?? 0),
+        dueDate: stream.next_expected_date ?? now.split('T')[0],
+        severityTier: 'annoyance_reputational',
+        timePressure: 'due_this_week',
+        reliefPerDollar: 0.5,
+        negotiability: 0.5,
+        bestAction: 'pay',
+        consequenceIfIgnored: '',
+        isPastDue: false,
+        daysUntilDue: 0,
+        category: 'personal',
+        frequency: stream.frequency ?? 'monthly',
+        source: 'plaid',
+      }).onConflictDoUpdate({
+        target: obligations.id,
+        set: {
+          amount: Math.abs(stream.average_amount?.amount ?? 0),
+          dueDate: stream.next_expected_date ?? now.split('T')[0],
+        },
+      }).run();
+    }
+
+    // Sync category spend for current month
+    const monthStart = `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}-01`;
+    const today = new Date().toISOString().split('T')[0];
+    const spend = await plaid.getCategorySpend(monthStart, today);
+    for (const cat of spend) {
+      const catId = `spend-${monthStart}-${cat.category}`;
+      db.insert(categorySpend).values({
+        id: catId,
+        category: cat.category,
+        spent: cat.spent,
+        budget: null,
+        cycleStart: monthStart,
+        cycleEnd: today,
+        isBusinessExpense: false,
+        lastSynced: now,
+      }).onConflictDoUpdate({
+        target: categorySpend.id,
+        set: { spent: cat.spent, cycleEnd: today, lastSynced: now },
+      }).run();
+    }
+  }
 }
 
-export function getEngineState(): EngineState {
+export function getEngineState(): EngineState & { actionItems: Array<Record<string, unknown>> } {
   const data = assembleFinancialData();
-  return computeEngineState(data);
-}
-
-export function getActionItems() {
+  const engineState = computeEngineState(data);
   const db = getDb();
-  return db.select().from(actionItems).all();
+  const items = db.select().from(actionItems).all();
+  return { ...engineState, actionItems: items };
 }
 
 export function registerFinanceHandlers() {
@@ -959,29 +1173,37 @@ export function useFinance() {
   const [actionItems, setActionItems] = useState<ActionItem[]>([]);
   const [loading, setLoading] = useState(true);
 
+  const processResult = useCallback((result: Record<string, unknown> | null) => {
+    if (!result) return;
+    // finance:get-state returns EngineState + actionItems bundled together
+    const { actionItems: items, ...engine } = result as EngineState & { actionItems: ActionItem[] };
+    setState(engine as EngineState);
+    if (Array.isArray(items)) setActionItems(items);
+  }, []);
+
   const fetchState = useCallback(async () => {
     setLoading(true);
     try {
       const result = await window.api.finance.getState();
-      setState(result);
+      processResult(result as Record<string, unknown> | null);
     } catch (error) {
       console.error('Failed to fetch finance state:', error);
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [processResult]);
 
   const refresh = useCallback(async () => {
     setLoading(true);
     try {
       const result = await window.api.finance.refresh();
-      setState(result);
+      processResult(result as Record<string, unknown> | null);
     } catch (error) {
       console.error('Failed to refresh finance state:', error);
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [processResult]);
 
   useEffect(() => {
     fetchState();
@@ -1558,6 +1780,7 @@ git commit -m "chore: cleanup after Compass integration"
 | 3 | SQLite database schema | electron/db.ts |
 | 4 | Expand electron-store | electron/store.ts, electron.d.ts |
 | 5 | Plaid SDK wrapper | electron/plaid.ts |
+| 5b | Plaid Link BrowserWindow popup | electron/plaid-link.ts |
 | 6 | Finance IPC handlers | electron/finance.ts, main.ts, preload.ts |
 | 7 | Money sidebar view + routing | MoneyView.tsx, Sidebar.tsx, App.tsx |
 | 8 | Briefing context expansion | anthropic.ts, electron.d.ts |
