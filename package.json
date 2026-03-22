@@ -11,14 +11,18 @@
     "test": "vitest run --passWithNoTests",
     "build:app": "tsc && vite build",
     "build": "tsc && vite build && electron-builder",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "postinstall": "npx @electron/rebuild -f -w better-sqlite3"
   },
   "dependencies": {
+    "better-sqlite3": "^12.8.0",
     "clsx": "^2.1.1",
     "date-fns": "^4.1.0",
+    "drizzle-orm": "^0.45.1",
     "electron-store": "^10.0.0",
     "lucide-react": "^0.468.0",
     "motion": "^12.35.2",
+    "plaid": "^41.4.0",
     "react": "^18.3.1",
     "react-dnd": "^16.0.1",
     "react-dnd-html5-backend": "^16.0.1",
@@ -28,12 +32,15 @@
     "tailwind-merge": "^3.0.2"
   },
   "devDependencies": {
+    "@electron/rebuild": "^4.0.3",
     "@tailwindcss/vite": "^4.1.0",
     "@testing-library/jest-dom": "^6.0.0",
     "@testing-library/react": "^16.0.0",
+    "@types/better-sqlite3": "^7.6.13",
     "@types/react": "^18.3.18",
     "@types/react-dom": "^18.3.5",
     "@vitejs/plugin-react": "^4.3.4",
+    "drizzle-kit": "^0.31.10",
     "electron": "^33.4.0",
     "electron-builder": "^25.1.8",
     "jsdom": "^25.0.0",
