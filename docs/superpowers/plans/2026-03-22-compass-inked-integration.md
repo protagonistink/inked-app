@@ -84,7 +84,7 @@ npm install -D @types/better-sqlite3 drizzle-kit @electron/rebuild
 Add to `scripts` in `package.json`:
 
 ```json
-"postinstall": "electron-rebuild -f -w better-sqlite3"
+"postinstall": "npx @electron/rebuild -f -w better-sqlite3"
 ```
 
 - [ ] **Step 4: Run install to trigger rebuild**
@@ -214,9 +214,9 @@ describe('financial database schema', () => {
     // Run migrations inline for test
     sqlite.exec(schema.CREATE_TABLES_SQL);
 
-    const tables = db.all<{ name: string }>(
-      sql`SELECT name FROM sqlite_master WHERE type='table' ORDER BY name`
-    );
+    const tables = sqlite.prepare(
+      "SELECT name FROM sqlite_master WHERE type='table' ORDER BY name"
+    ).all() as { name: string }[];
     const tableNames = tables.map(t => t.name);
 
     expect(tableNames).toContain('accounts');
@@ -620,12 +620,15 @@ export async function getBalances() {
   }));
 }
 
-export async function getRecurring() {
+export async function getRecurring(accountIds: string[]) {
   const client = getClient();
   const accessToken = store.get('plaid.accessToken') as string;
   if (!accessToken) throw new Error('No Plaid access token');
 
-  const response = await client.transactionsRecurringGet({ access_token: accessToken });
+  const response = await client.transactionsRecurringGet({
+    access_token: accessToken,
+    account_ids: accountIds,
+  });
   return {
     inflow: response.data.inflow_streams,
     outflow: response.data.outflow_streams,
@@ -941,8 +944,19 @@ Create `src/hooks/useFinance.ts`:
 import { useState, useCallback, useEffect } from 'react';
 import type { EngineState } from '../../engine/types';
 
+interface ActionItem {
+  id: string;
+  description: string;
+  status: string;
+  dueDate: string | null;
+  amount: number | null;
+  createdAt: string;
+  completedAt: string | null;
+}
+
 export function useFinance() {
   const [state, setState] = useState<EngineState | null>(null);
+  const [actionItems, setActionItems] = useState<ActionItem[]>([]);
   const [loading, setLoading] = useState(true);
 
   const fetchState = useCallback(async () => {
@@ -973,27 +987,47 @@ export function useFinance() {
     fetchState();
   }, [fetchState]);
 
-  return { state, loading, refresh };
+  return { state, actionItems, loading, refresh };
 }
 ```
 
-- [ ] **Step 3: Create MoneyView component (3-state shell)**
+- [ ] **Step 3: Create MoneyView component (3 states, 5 sections, adaptive density)**
 
-Create `src/components/MoneyView.tsx`:
+Create `src/components/MoneyView.tsx`.
+
+**Important:** The Plaid Link flow requires opening a child BrowserWindow (not an OAuth redirect — Plaid Link is a hosted JS widget). This is a known integration challenge. The "Connect Bank" button creates the link token but the actual BrowserWindow popup is a self-contained piece of work — implement it as a helper that opens a BrowserWindow loading the Plaid Link URL, listens for the `postMessage` callback with the public token, then calls `plaidExchange`. If the BrowserWindow approach proves problematic due to CSP, fall back to opening the system browser with a localhost redirect.
 
 ```tsx
 import { useState, useEffect } from 'react';
 import { useFinance } from '@/hooks/useFinance';
 import { RefreshCw } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { formatDistanceToNow } from 'date-fns';
+import type { EngineState } from '../../engine/types';
+
+// Adaptive density: cognitiveState controls which sections are expanded
+function useExpandedSections(cognitiveState: EngineState['cognitiveState']) {
+  // calm = number only, alert = number + upcoming + actions, compressed = everything
+  return {
+    cashJobs: cognitiveState === 'compressed',
+    upcoming: cognitiveState !== 'calm',
+    actionItems: cognitiveState !== 'calm',
+    recommendations: cognitiveState === 'compressed',
+    pipeline: cognitiveState === 'compressed',
+  };
+}
 
 export function MoneyView() {
   const [configured, setConfigured] = useState<boolean | null>(null);
-  const { state, loading, refresh } = useFinance();
+  const [lastSync, setLastSync] = useState<string | null>(null);
+  const { state, loading, refresh, actionItems } = useFinance();
 
   useEffect(() => {
     window.api.store.get('finance.configured').then((val) => {
       setConfigured(Boolean(val));
+    });
+    window.api.settings.load().then((s) => {
+      if (s.finance.lastSync) setLastSync(s.finance.lastSync);
     });
   }, []);
 
@@ -1010,8 +1044,9 @@ export function MoneyView() {
             onClick={async () => {
               try {
                 const { linkToken } = await window.api.finance.plaidLink();
-                // TODO: open Plaid Link BrowserWindow with linkToken
-                console.log('Plaid link token:', linkToken);
+                // Opens Plaid Link in a child BrowserWindow — see electron/plaid-link.ts
+                // After success, calls window.api.finance.plaidExchange(publicToken)
+                // then refreshes state and sets configured = true
               } catch (error) {
                 console.error('Failed to create link token:', error);
               }
@@ -1025,8 +1060,8 @@ export function MoneyView() {
     );
   }
 
-  // Loading state
-  if (configured === null || loading) {
+  // Loading / syncing state
+  if (configured === null || (loading && !state)) {
     return (
       <div className="flex h-full items-center justify-center">
         <p className="text-sm text-text-muted">Getting your accounts...</p>
@@ -1034,36 +1069,50 @@ export function MoneyView() {
     );
   }
 
-  // Active state — dashboard
+  // Error state
   if (!state) {
     return (
-      <div className="flex h-full items-center justify-center">
-        <p className="text-sm text-text-muted">Unable to load financial data. Try refreshing.</p>
-        <button onClick={refresh} className="ml-2 text-accent-warm">
-          <RefreshCw className="w-4 h-4" />
+      <div className="flex h-full items-center justify-center gap-2">
+        <p className="text-sm text-text-muted">Unable to load financial data.</p>
+        <button onClick={refresh} className="text-accent-warm text-sm hover:underline">
+          Try again
         </button>
       </div>
     );
   }
 
+  const expanded = useExpandedSections(state.cognitiveState);
+  const pendingActions = actionItems.filter(a => a.status === 'pending');
+
   return (
     <div className="h-full overflow-y-auto p-6 space-y-6">
-      {/* Header with refresh */}
+      {/* Header with refresh + data freshness */}
       <div className="flex items-center justify-between">
         <h2 className="text-lg font-medium text-text-primary">Money</h2>
-        <button
-          onClick={refresh}
-          disabled={loading}
-          className={cn(
-            'p-1.5 rounded-md text-text-muted hover:text-text-primary transition-colors',
-            loading && 'animate-spin'
+        <div className="flex items-center gap-2">
+          {lastSync && (
+            <span className="text-[11px] text-text-muted">
+              Updated {formatDistanceToNow(new Date(lastSync), { addSuffix: true })}
+            </span>
           )}
-        >
-          <RefreshCw className="w-4 h-4" />
-        </button>
+          <button
+            onClick={async () => {
+              await refresh();
+              const s = await window.api.settings.load();
+              if (s.finance.lastSync) setLastSync(s.finance.lastSync);
+            }}
+            disabled={loading}
+            className={cn(
+              'p-1.5 rounded-md text-text-muted hover:text-text-primary transition-colors',
+              loading && 'animate-spin'
+            )}
+          >
+            <RefreshCw className="w-4 h-4" />
+          </button>
+        </div>
       </div>
 
-      {/* 1. The Number */}
+      {/* 1. The Number — always visible */}
       <div className="text-center py-8">
         <div className="text-4xl font-semibold text-text-primary">
           ${state.permissionNumber.toLocaleString()}
@@ -1074,27 +1123,29 @@ export function MoneyView() {
         </p>
       </div>
 
-      {/* 2. Cash Jobs */}
-      <section>
-        <h3 className="text-xs uppercase tracking-wider text-text-muted mb-3">Where your money is working</h3>
-        <div className="space-y-2">
-          {[
-            { label: 'Bills reserved', value: state.cashJobs.survival },
-            { label: 'Operating', value: state.cashJobs.operating },
-            { label: 'Catch-up', value: state.cashJobs.catchUp },
-            { label: 'Untouchable', value: state.cashJobs.untouchable },
-            { label: 'Free', value: state.cashJobs.trulyFree },
-          ].filter(j => j.value > 0).map(job => (
-            <div key={job.label} className="flex items-center justify-between text-sm">
-              <span className="text-text-muted">{job.label}</span>
-              <span className="text-text-primary">${job.value.toLocaleString()}</span>
-            </div>
-          ))}
-        </div>
-      </section>
+      {/* 2. Cash Jobs — expanded when compressed */}
+      {expanded.cashJobs && (
+        <section>
+          <h3 className="text-xs uppercase tracking-wider text-text-muted mb-3">Where your money is working</h3>
+          <div className="space-y-2">
+            {[
+              { label: 'Bills reserved', value: state.cashJobs.survival },
+              { label: 'Operating', value: state.cashJobs.operating },
+              { label: 'Catch-up', value: state.cashJobs.catchUp },
+              { label: 'Untouchable', value: state.cashJobs.untouchable },
+              { label: 'Free', value: state.cashJobs.trulyFree },
+            ].filter(j => j.value > 0).map(job => (
+              <div key={job.label} className="flex items-center justify-between text-sm">
+                <span className="text-text-muted">{job.label}</span>
+                <span className="text-text-primary">${job.value.toLocaleString()}</span>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
 
-      {/* 3. Upcoming */}
-      {state.obligations.length > 0 && (
+      {/* 3. Upcoming — expanded when alert or compressed */}
+      {expanded.upcoming && state.obligations.length > 0 && (
         <section>
           <h3 className="text-xs uppercase tracking-wider text-text-muted mb-3">Upcoming</h3>
           <div className="space-y-2">
@@ -1116,8 +1167,50 @@ export function MoneyView() {
         </section>
       )}
 
-      {/* 4. Recommendations */}
-      {state.recommendations.length > 0 && (
+      {/* 4. Action Items — expanded when alert or compressed */}
+      {expanded.actionItems && pendingActions.length > 0 && (
+        <section>
+          <h3 className="text-xs uppercase tracking-wider text-text-muted mb-3">Action items</h3>
+          <div className="space-y-2">
+            {pendingActions.map(a => (
+              <div key={a.id} className="flex items-center justify-between text-sm p-3 rounded-md bg-bg-card border border-border-subtle">
+                <div>
+                  <span className="text-text-primary">{a.description}</span>
+                  {a.dueDate && new Date(a.dueDate) < new Date() && (
+                    <span className="text-accent-warm ml-2 text-xs">overdue</span>
+                  )}
+                </div>
+                {a.amount && (
+                  <span className="text-text-muted">${a.amount.toLocaleString()}</span>
+                )}
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
+
+      {/* 5. Business Pipeline — expanded when compressed */}
+      {expanded.pipeline && state.revenue.length > 0 && (
+        <section>
+          <h3 className="text-xs uppercase tracking-wider text-text-muted mb-3">Business pipeline</h3>
+          <div className="space-y-2">
+            {(['confirmed', 'invoiced', 'verbal', 'speculative'] as const).map(confidence => {
+              const items = state.revenue.filter(r => r.confidence === confidence);
+              if (items.length === 0) return null;
+              const total = items.reduce((sum, r) => sum + r.amount, 0);
+              return (
+                <div key={confidence} className="flex items-center justify-between text-sm">
+                  <span className="text-text-muted capitalize">{confidence}</span>
+                  <span className="text-text-primary">${total.toLocaleString()}</span>
+                </div>
+              );
+            })}
+          </div>
+        </section>
+      )}
+
+      {/* Recommendations — expanded when compressed */}
+      {expanded.recommendations && state.recommendations.length > 0 && (
         <section>
           <h3 className="text-xs uppercase tracking-wider text-text-muted mb-3">Next moves</h3>
           <div className="space-y-2">
@@ -1231,7 +1324,7 @@ In `src/types/electron.d.ts`, add to the `BriefingContext` interface (after `ink
 
 - [ ] **Step 2: Mirror the type in electron/anthropic.ts**
 
-Add the same `finance?` field to the `BriefingContext` interface in `electron/anthropic.ts` (line 69, before the closing brace).
+**Known issue:** The `BriefingContext` interface is duplicated — `src/types/electron.d.ts` (canonical) and `electron/anthropic.ts` (local copy, already missing `planningDate`, `planningDateLabel`, `planningDateIsToday`). These interfaces are already out of sync. Add the same `finance?` field to the `BriefingContext` interface in `electron/anthropic.ts` (line 69, before the closing brace). Ideally both files should import from a single source — but that refactor is outside this plan's scope. At minimum, ensure both files have the `finance?` field.
 
 - [ ] **Step 3: Add financial context to buildSystemPrompt**
 
@@ -1344,8 +1437,8 @@ if (store.get('finance.configured')) {
           name: o.name,
           amount: o.amount,
           daysUntil: o.daysUntilDue,
-          covered: true, // TODO: derive from cashJobs
-          category: 'personal' as const, // TODO: derive from obligation category in DB
+          covered: o.cashReserved >= o.amount,
+          category: 'personal' as const, // DB has category but engine Obligation type doesn't — use 'personal' default, extend in Phase 2
         })),
       actionItems: actions
         .filter(a => a.status === 'pending')
