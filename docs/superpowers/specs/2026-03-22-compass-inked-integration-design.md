@@ -34,7 +34,7 @@ This matches every existing integration pattern in the codebase (Asana, GCal, St
 
 ### Engine
 
-7 of 10 Compass engine modules copied into `engine/` at the project root (sibling to `electron/` and `src/`). Tests come along.
+8 of 10 Compass engine modules copied into `engine/` at the project root (sibling to `electron/` and `src/`). Tests come along.
 
 **Included:**
 - `permissionNumber.ts` — the core number (what's left after bills)
@@ -44,12 +44,15 @@ This matches every existing integration pattern in the codebase (Asana, GCal, St
 - `recommendationEngine.ts` — top-3 prioritized next moves
 - `cognitiveStateInferrer.ts` — calm/alert/compressed (drives UI density)
 - `recoveryStageDetector.ts` — financial health stage
+- `revenueTracker.ts` — filters allocatable revenue for bridge calculation
 - `types.ts` — full type definitions
 - `index.ts` — `computeEngineState()` orchestrator
 
 **Excluded (Phase 2):**
-- `transactionProcessor.ts` — Inked doesn't manage individual transactions
 - `learningLoop.ts` — recommendation outcome tracking, needs the weekly sit-down
+
+**Modified on import:**
+- `index.ts` — `computeEngineState()` is called with `transactions: []`. The transaction processing step (step 8) is skipped and `reviewQueue` returns empty. `transactionProcessor.ts` is not copied in. This is a one-line change: pass an empty array and the engine handles it gracefully — the orchestrator still runs, it just processes zero transactions.
 
 ### Database
 
@@ -67,6 +70,26 @@ If multi-device sync or cloud backup is ever needed, Drizzle abstracts the diale
 | `category_spend` | Aggregated spend per category per cycle. Refreshed on Plaid sync. Personal and business separated. Not per-transaction. |
 | `action_items` | Financial to-dos tied to obligations/revenue. "Send invoice to Client X." "Review ad spend before renewal." Status (pending/done), due date, description |
 
+### FinancialData assembly
+
+`electron/finance.ts` assembles the engine's `FinancialData` input from SQLite + electron-store. Field mapping:
+
+| FinancialData field | Source |
+|---|---|
+| `obligations` | `obligations` table |
+| `revenue` | `revenue` table |
+| `transactions` | Always `[]` — Inked doesn't store individual transactions |
+| `income` | Sum of `revenue` entries with confidence `confirmed` for the current month |
+| `cashOnHand` | Sum of `accounts.available_balance` across all linked accounts |
+| `flexPoolTarget` | `finance_config` electron-store key (set during onboarding or settings) |
+| `spentFromFlex` | Sum of `category_spend` for flex categories in the current cycle |
+| `survivalNeeds` | `finance_config` electron-store key (rent, food, utilities — set during setup) |
+| `untouchableNeeds` | `finance_config` electron-store key (reserve floor — set during setup) |
+| `catchUpNeeds` | Sum of past-due `obligations` amounts |
+| `today` | `new Date()` |
+
+The `finance_config` values (`flexPoolTarget`, `survivalNeeds`, `untouchableNeeds`) are set once during initial setup (part of the onboarding flow after Plaid connection) and adjustable in Settings. These are personal financial parameters the engine needs but Plaid can't infer.
+
 ### New files
 
 **`electron/db.ts`** — Drizzle SQLite client, schema definitions, migrations. DB auto-creates on first app launch after finance is configured.
@@ -74,6 +97,8 @@ If multi-device sync or cloud backup is ever needed, Drizzle abstracts the diale
 **`electron/finance.ts`** — IPC handler module, registered in `main.ts` via `registerFinanceHandlers()`. Same pattern as `registerAsanaHandlers()`, `registerGCalHandlers()`, etc.
 
 **`electron/plaid.ts`** — Plaid SDK wrapper. Handles `linkTokenCreate`, `itemPublicTokenExchange`, `accountsBalanceGet`, `transactionsRecurringGet`, category spend aggregation. Access token stored in electron-store (not SQLite) — follows the existing pattern of API credentials in store, domain data in DB.
+
+**Note:** Plaid Link is a hosted JavaScript widget, not an OAuth redirect. The child BrowserWindow approach works but has known quirks (CSP headers, cross-origin frame communication via `postMessage`). This is different from GCal's localhost-redirect pattern and will need its own integration logic.
 
 ### IPC Handlers
 
@@ -95,13 +120,13 @@ finance: {
 },
 ```
 
-### Plaid Link in Electron
-
-Opens a child BrowserWindow pointing at Plaid's Link URL. On success, the window posts the public token back to the main process and closes. Same pattern as GCal OAuth — Inked already handles browser-based auth flows in a popup window.
-
 ### Plaid credentials
 
 Client ID and secret stored in electron-store alongside Asana/GCal credentials. Same trade-off Inked already makes with API secrets client-side.
+
+### Type declarations
+
+`src/types/electron.d.ts` gets a `FinanceAPI` interface matching the preload shape, and `Window.api.finance: FinanceAPI` added to the global declaration. Follows the existing pattern of `AsanaAPI`, `GCalAPI`, `AIAPI`, etc.
 
 ---
 
@@ -109,9 +134,13 @@ Client ID and secret stored in electron-store alongside Asana/GCal credentials. 
 
 ### View registration
 
-`'money'` added to the `View` union type: `'flow' | 'archive' | 'goals' | 'scratch' | 'money'`.
+`'money'` added to the `View` union type in `src/context/AppContext.tsx`: `'flow' | 'archive' | 'goals' | 'scratch' | 'money'`. The main content area renderer (which switches on `activeView`) and `Sidebar.tsx` both need updating to handle the new view.
 
 Sidebar nav item placed between "Today's Commit" and "Archive." Icon TBD (Lucide has `Wallet`, `Banknote`, `CircleDollarSign`).
+
+### Renderer data pattern
+
+The Money view uses a `useFinance()` hook that calls `window.api.finance.getState()` on mount and caches the result in local component state (not in AppContext). Financial state is view-specific — it doesn't need to be globally available like planner state. The hook exposes `{ state: EngineState | null, loading: boolean, refresh: () => Promise<void> }`. AppContext only gains the `finance.configured` flag (from electron-store) to control whether the sidebar shows the Money nav item.
 
 ### Three states
 
@@ -160,6 +189,8 @@ Financial to-dos with status and due dates:
 
 These are the items the morning briefing can reference alongside planned tasks: "3 focus blocks, 2 meetings, 1 invoice to send."
 
+Financial action items are **separate from the planner task system.** They live only in the Money view and the briefing — they do not appear in the flow view, do not become `PlannedTask` objects, and do not mix into Asana sync. The two systems serve different purposes: planner tasks are work you schedule and execute; financial action items are money moves you need to make. A user marks a financial action item done in the Money view, not in the day plan.
+
 **5. Business Pipeline**
 
 Revenue entries with confidence levels: confirmed (paid), invoiced (sent, waiting), verbal (agreed, not invoiced), speculative (potential). Shows what's coming in and when. The income side of clarity.
@@ -191,7 +222,7 @@ The surface shows when data was last refreshed — not prominently, but availabl
 
 ### BriefingContext expansion
 
-The `BriefingContext` object in `electron/anthropic.ts` gets a `finance` field. The briefing assembler calls `computeEngineState()` once (or reuses a recent computation) and extracts what the AI needs.
+The `BriefingContext` object in `electron/anthropic.ts` gets a `finance` field. The briefing assembler calls `computeEngineState()` once and extracts what the AI needs. The engine's `Recommendation` type is mapped to a simplified briefing shape by `electron/finance.ts`: `actionVerb` becomes `action`, `protects` becomes `reason`, and scoring/ranking fields are dropped since the AI doesn't need them.
 
 ```ts
 finance?: {
@@ -280,8 +311,12 @@ The AI answers financial questions using the same context. "How's money looking?
 
 ### New electron-store keys
 
+Added to the `Store` constructor defaults in `electron/store.ts`:
+
 ```ts
 plaid: {
+  clientId: '',
+  secret: '',
   accessToken: '',
   itemId: '',
   institutionName: '',
@@ -291,25 +326,43 @@ finance: {
   configured: false,
   weeklyPattern: [] as number[],  // rolling 8-week history of weekly remaining
 },
+financeConfig: {
+  flexPoolTarget: 0,
+  survivalNeeds: 0,
+  untouchableNeeds: 0,
+},
 ```
 
-**`plaid`** — Credentials for the Plaid connection. Same pattern as `anthropic.apiKey`, `asana.token`, `gcal.clientId`. Access token is the persistent credential for bank data pulls. `institutionName` stored so settings can show "Connected to Chase" without a Plaid API call.
+**`plaid`** — Credentials for the Plaid connection. `clientId` and `secret` are developer credentials (entered in Settings like Asana token and GCal client ID/secret). `accessToken` is the persistent per-user credential for bank data pulls. `institutionName` stored so settings can show "Connected to Chase" without a Plaid API call.
 
-**`finance.configured`** — Boolean flag the renderer checks to decide between unconnected and active states in the Money view. Added to `SAFE_STORE_KEYS` so the renderer can read it directly.
+**`finance.configured`** — Boolean flag the renderer checks to decide between unconnected and active states in the Money view. Added to `SAFE_STORE_KEYS` in `electron/store.ts` so the renderer can read it directly.
 
 **`finance.weeklyPattern`** — Rolling 8-week history of weekly remaining amounts. Powers "that's normal for you" / "tighter than usual" / "more room than last week." Each week's remaining amount appended when the weekly cycle closes. Lives in electron-store (not SQLite) because it's a small array the briefing reads frequently — same access pattern as `plannerState`.
 
+**`financeConfig`** — Personal financial parameters the engine needs but Plaid can't infer. Set during onboarding (after Plaid connection) and adjustable in Settings.
+
 ### Settings panel
 
-`settings:load` response gets a `finance` section:
+`settings:load` response gets a `finance` section. `LoadedSettings` type in `src/types/electron.d.ts` updated to match:
 
 ```ts
 finance: {
   configured: Boolean(store.get('plaid.accessToken')),
   institutionName: String(store.get('plaid.institutionName') || ''),
   lastSync: String(store.get('plaid.lastSync') || ''),
+  plaidClientIdConfigured: Boolean(store.get('plaid.clientId')),
+  plaidSecretConfigured: Boolean(store.get('plaid.secret')),
 },
 ```
+
+`settings:save` handler gets new clauses for Plaid credentials:
+
+```ts
+if ('plaidClientId' in payload) store.set('plaid.clientId', payload.plaidClientId);
+if ('plaidSecret' in payload) store.set('plaid.secret', payload.plaidSecret);
+```
+
+`SettingsUpdate` type in `src/types/electron.d.ts` updated with `plaidClientId?: string` and `plaidSecret?: string`.
 
 Settings UI gets a "Finance" section for managing the Plaid connection — connect, disconnect, see which bank, see last sync time. Plaid client ID and secret entered here alongside Asana/GCal credentials.
 
@@ -332,10 +385,10 @@ All financial domain data (accounts, obligations, revenue, category spend, actio
 
 ## Dependencies
 
-- `better-sqlite3` — SQLite driver for Electron main process
+- `better-sqlite3` — SQLite driver for Electron main process. **Native module:** requires `@electron/rebuild` or `electron-rebuild` to compile against Electron's Node version. The build pipeline (`electron-builder` config) needs updating to include the native binary in packaged builds.
 - `drizzle-orm` + `drizzle-kit` — ORM and migration tooling
 - `plaid` — Plaid Node SDK
-- Compass engine (7 modules, copied into `engine/`)
+- Compass engine (8 modules, copied into `engine/`)
 
 ## Open questions
 
@@ -343,3 +396,5 @@ All financial domain data (accounts, obligations, revenue, category spend, actio
 - Plaid environment — sandbox for development, production requires Plaid approval process
 - Category spend cycle boundaries — calendar month, or aligned to pay periods?
 - Action item lifecycle — do completed financial to-dos archive like completed tasks, or just disappear?
+- Plaid token expiry and bank disconnection — Plaid access tokens can expire or banks can revoke connection. Phase 1 needs at minimum a try/catch that surfaces a "Reconnect your bank" prompt in the Money view when the token is stale. Full webhook-based error handling is a later concern.
+- Onboarding flow for `financeConfig` values — after Plaid connection, the user needs to set survival needs, flex pool target, and untouchable reserve. How guided is this? A wizard? A settings form? This affects first-run UX significantly.
