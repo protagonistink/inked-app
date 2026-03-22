@@ -225,6 +225,13 @@ interface CaptureAPI {
   onEntryDeleted: (callback: (id: string) => void) => () => void;
 }
 
+interface FinanceAPI {
+  getState: () => Promise<import('../../engine/types').EngineState | null>;
+  refresh: () => Promise<import('../../engine/types').EngineState | null>;
+  plaidLink: () => Promise<{ success: boolean }>;
+  plaidExchange: (publicToken: string) => Promise<{ success: boolean }>;
+}
+
 declare global {
   interface Window {
     api: {
@@ -241,6 +248,7 @@ declare global {
       ink: InkAPI;
       chat: ChatHistoryAPI;
       capture: CaptureAPI;
+      finance: FinanceAPI;
     };
   }
 }

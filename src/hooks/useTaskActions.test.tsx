@@ -148,6 +148,12 @@ describe('useTaskActions', () => {
         onEntryUpdated: vi.fn(() => vi.fn()),
         onEntryDeleted: vi.fn(() => vi.fn()),
       },
+      finance: {
+        getState: vi.fn().mockResolvedValue(null),
+        refresh: vi.fn().mockResolvedValue(null),
+        plaidLink: vi.fn().mockResolvedValue({ success: false }),
+        plaidExchange: vi.fn().mockResolvedValue({ success: false }),
+      },
     };
   });
 

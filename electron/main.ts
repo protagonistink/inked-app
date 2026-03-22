@@ -9,6 +9,7 @@ import { registerAnthropicHandlers } from './anthropic';
 import { registerInkContextHandlers } from './ink-context';
 import { registerChatHistoryHandlers } from './chat-history';
 import { registerCaptureHandlers, createCaptureWindow } from './capture';
+import { registerFinanceHandlers } from './finance';
 
 process.env.DIST = path.join(__dirname, '../dist');
 process.env.VITE_PUBLIC = app.isPackaged
@@ -203,6 +204,7 @@ app.whenReady().then(() => {
   registerInkContextHandlers();
   registerChatHistoryHandlers();
   registerCaptureHandlers();
+  registerFinanceHandlers();
 
   ipcMain.handle('window:show-pomodoro', () => {
     if (!pomodoroWindow) createPomodoroWindow();

@@ -108,6 +108,13 @@ contextBridge.exposeInMainWorld('api', {
   shell: {
     openExternal: (url: string) => ipcRenderer.invoke('shell:open-external', url),
   },
+  // Finance (Compass engine)
+  finance: {
+    getState: () => ipcRenderer.invoke('finance:get-state'),
+    refresh: () => ipcRenderer.invoke('finance:refresh'),
+    plaidLink: () => ipcRenderer.invoke('finance:plaid-link'),
+    plaidExchange: (publicToken: string) => ipcRenderer.invoke('finance:plaid-exchange', publicToken),
+  },
   // Quick Capture
   capture: {
     save: (text: string) => ipcRenderer.invoke('capture:save', text),
