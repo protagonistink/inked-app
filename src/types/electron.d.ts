@@ -60,6 +60,35 @@ export interface BriefingContext {
   monthlyOneThing?: string;
   monthlyWhy?: string;
   inkMode?: InkMode;
+  finance?: {
+    weeklyRemaining: number;
+    weeklyRemainingContext: 'normal' | 'tight' | 'comfortable';
+    billsCovered: boolean;
+    cognitiveState: 'calm' | 'alert' | 'compressed';
+    upcoming: Array<{
+      name: string;
+      amount: number;
+      daysUntil: number;
+      covered: boolean;
+      category: 'personal' | 'business';
+    }>;
+    actionItems: Array<{
+      description: string;
+      daysOverdue?: number;
+      amount?: number;
+    }>;
+    recommendations: Array<{
+      action: string;
+      target: string;
+      amount: number;
+      reason: string;
+    }>;
+    businessPipeline?: {
+      confirmedThisMonth: number;
+      invoicedOutstanding: number;
+      overdueInvoices: number;
+    };
+  };
 }
 
 export interface UserPhysics {

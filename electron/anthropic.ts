@@ -2,6 +2,7 @@ import { ipcMain, IpcMainInvokeEvent } from 'electron';
 import { store } from './store';
 import type { InkContext, InkMode } from '../src/types';
 import { INK_TOKEN_LIMITS } from '../src/lib/ink-mode';
+import { getEngineState } from './finance';
 
 const ANTHROPIC_API_URL = 'https://api.anthropic.com/v1/messages';
 
@@ -66,6 +67,35 @@ interface BriefingContext {
   monthlyOneThing?: string;
   monthlyWhy?: string;
   inkMode?: InkMode;
+  finance?: {
+    weeklyRemaining: number;
+    weeklyRemainingContext: 'normal' | 'tight' | 'comfortable';
+    billsCovered: boolean;
+    cognitiveState: 'calm' | 'alert' | 'compressed';
+    upcoming: Array<{
+      name: string;
+      amount: number;
+      daysUntil: number;
+      covered: boolean;
+      category: 'personal' | 'business';
+    }>;
+    actionItems: Array<{
+      description: string;
+      daysOverdue?: number;
+      amount?: number;
+    }>;
+    recommendations: Array<{
+      action: string;
+      target: string;
+      amount: number;
+      reason: string;
+    }>;
+    businessPipeline?: {
+      confirmedThisMonth: number;
+      invoicedOutstanding: number;
+      overdueInvoices: number;
+    };
+  };
 }
 
 function logAI(message: string, ...args: unknown[]) {
@@ -316,6 +346,48 @@ Patrick Kirkland — narrative strategist, screenwriter, and founder of Protagon
     ? `## QUICK CAPTURES (today)\nPatrick jotted these down during the day:\n${todayScratch.map((e) => `- "${e.text}" (${new Date(e.createdAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })})`).join('\n')}\n\n`
     : '';
 
+  // Financial context (Compass engine)
+  let financeSection = '';
+  if (ctx.finance) {
+    const f = ctx.finance;
+    const statusLine = f.billsCovered
+      ? `Bills are covered. $${f.weeklyRemaining.toLocaleString()} left for the week — ${f.weeklyRemainingContext === 'normal' ? "that's normal" : f.weeklyRemainingContext === 'tight' ? 'tighter than usual' : 'more room than usual'}.`
+      : `Bills need attention. $${f.weeklyRemaining.toLocaleString()} available.`;
+
+    const upcomingLines = f.upcoming
+      .filter(u => u.daysUntil <= 5)
+      .map(u => `- ${u.name}: $${u.amount} in ${u.daysUntil}d${u.covered ? '' : ' (NOT COVERED)'}${u.category === 'business' ? ' [business]' : ''}`)
+      .join('\n');
+
+    const actionLines = f.actionItems
+      .map(a => `- ${a.description}${a.daysOverdue ? ` (${a.daysOverdue}d overdue)` : ''}${a.amount ? ` — $${a.amount}` : ''}`)
+      .join('\n');
+
+    const recLines = f.recommendations
+      .map(r => `- ${r.action} ${r.target}${r.amount > 0 ? ` ($${r.amount})` : ''}: ${r.reason}`)
+      .join('\n');
+
+    financeSection = `
+
+## FINANCIAL CONTEXT (Compass)
+Financial cognitive state: ${f.cognitiveState}
+${statusLine}
+${upcomingLines ? `\nUpcoming obligations:\n${upcomingLines}` : ''}
+${actionLines ? `\nFinancial action items:\n${actionLines}` : ''}
+${recLines ? `\nRecommended moves:\n${recLines}` : ''}
+${f.businessPipeline ? `\nBusiness pipeline: $${f.businessPipeline.confirmedThisMonth} confirmed this month, $${f.businessPipeline.invoicedOutstanding} invoiced outstanding, ${f.businessPipeline.overdueInvoices} overdue invoices` : ''}
+
+FINANCIAL TONE RULES:
+- "Bills are covered" not "you have sufficient funds"
+- "Tighter than usual" not "you're running low"
+- Frame business expenses as decisions: "Ad spend renews Friday ($200) — keep it running?"
+- Frame growth/debt moves as opportunities, not obligations
+- Never use red language, urgency language, or judgment. Describe, don't evaluate.
+- If financial cognitive state is "calm" and nothing due within 5 days, do NOT proactively mention money.
+- If "alert" or "compressed", lead with the financial situation before task planning.
+`;
+  }
+
   // Today's journal entry — mode-specific framing
   const todayStr = today.toISOString().split('T')[0];
   const todayJournal = inkContext?.journalEntries?.find((e) => e.date === todayStr);
@@ -514,7 +586,7 @@ If the user asks you to add something as a recurring daily item, habit, or ritua
 - No emotional labor ("I understand", "That's totally fine", "Don't worry").
 - Lead with signal. Every sentence earns its place or gets cut.
 - When the day is overloaded, lead with the cut. Don't bury it.
-- One recommendation, then one escape hatch. Not three options.`;
+- One recommendation, then one escape hatch. Not three options.${financeSection}`;
 }
 
 function loadUserPhysics(): UserPhysics {
@@ -531,6 +603,55 @@ export function registerAnthropicHandlers() {
 
       const model = (store.get('anthropic.model') as string | undefined) ?? DEFAULT_MODEL;
       const ctxWithPhysics: BriefingContext = { ...context, userPhysics: loadUserPhysics() };
+
+      // Inject financial context if configured
+      if (store.get('finance.configured')) {
+        try {
+          const engineResult = getEngineState();
+          const weeklyPattern = (store.get('finance.weeklyPattern') as number[]) || [];
+          const avg = weeklyPattern.length > 0
+            ? weeklyPattern.reduce((a, b) => a + b, 0) / weeklyPattern.length
+            : null;
+
+          const weeklyRemainingContext: 'normal' | 'tight' | 'comfortable' =
+            avg === null ? 'normal'
+            : engineResult.permissionNumber < avg * 0.7 ? 'tight'
+            : engineResult.permissionNumber > avg * 1.3 ? 'comfortable'
+            : 'normal';
+
+          ctxWithPhysics.finance = {
+            weeklyRemaining: engineResult.permissionNumber,
+            weeklyRemainingContext,
+            billsCovered: engineResult.cashJobs.survival > 0 || engineResult.obligations.every(o => !o.isPastDue),
+            cognitiveState: engineResult.cognitiveState,
+            upcoming: engineResult.obligations
+              .filter(o => o.daysUntilDue >= 0 && o.daysUntilDue <= 14)
+              .map(o => ({
+                name: o.name,
+                amount: o.amount,
+                daysUntil: o.daysUntilDue,
+                covered: o.cashReserved >= o.amount,
+                category: 'personal' as const,
+              })),
+            actionItems: engineResult.actionItems
+              .filter((a: Record<string, unknown>) => a.status === 'pending')
+              .map((a: Record<string, unknown>) => ({
+                description: String(a.description),
+                daysOverdue: a.dueDate ? Math.max(0, Math.floor((Date.now() - new Date(String(a.dueDate)).getTime()) / 86400000)) : undefined,
+                amount: typeof a.amount === 'number' ? a.amount : undefined,
+              })),
+            recommendations: engineResult.recommendations.map(r => ({
+              action: r.actionVerb,
+              target: r.target,
+              amount: r.amount,
+              reason: r.protects,
+            })),
+          };
+        } catch (error) {
+          console.error('Failed to inject finance context into briefing:', error);
+        }
+      }
+
       const maxTokens = ctxWithPhysics.inkMode ? INK_TOKEN_LIMITS[ctxWithPhysics.inkMode] : 400;
 
       // Window the conversation to avoid token bloat in long sessions
@@ -574,6 +695,55 @@ export function registerAnthropicHandlers() {
       const model = (store.get('anthropic.model') as string | undefined) ?? DEFAULT_MODEL;
       logAI('[AI] Using model:', model);
       const ctxWithPhysics: BriefingContext = { ...context, userPhysics: loadUserPhysics() };
+
+      // Inject financial context if configured
+      if (store.get('finance.configured')) {
+        try {
+          const engineResult = getEngineState();
+          const weeklyPattern = (store.get('finance.weeklyPattern') as number[]) || [];
+          const avg = weeklyPattern.length > 0
+            ? weeklyPattern.reduce((a, b) => a + b, 0) / weeklyPattern.length
+            : null;
+
+          const weeklyRemainingContext: 'normal' | 'tight' | 'comfortable' =
+            avg === null ? 'normal'
+            : engineResult.permissionNumber < avg * 0.7 ? 'tight'
+            : engineResult.permissionNumber > avg * 1.3 ? 'comfortable'
+            : 'normal';
+
+          ctxWithPhysics.finance = {
+            weeklyRemaining: engineResult.permissionNumber,
+            weeklyRemainingContext,
+            billsCovered: engineResult.cashJobs.survival > 0 || engineResult.obligations.every(o => !o.isPastDue),
+            cognitiveState: engineResult.cognitiveState,
+            upcoming: engineResult.obligations
+              .filter(o => o.daysUntilDue >= 0 && o.daysUntilDue <= 14)
+              .map(o => ({
+                name: o.name,
+                amount: o.amount,
+                daysUntil: o.daysUntilDue,
+                covered: o.cashReserved >= o.amount,
+                category: 'personal' as const,
+              })),
+            actionItems: engineResult.actionItems
+              .filter((a: Record<string, unknown>) => a.status === 'pending')
+              .map((a: Record<string, unknown>) => ({
+                description: String(a.description),
+                daysOverdue: a.dueDate ? Math.max(0, Math.floor((Date.now() - new Date(String(a.dueDate)).getTime()) / 86400000)) : undefined,
+                amount: typeof a.amount === 'number' ? a.amount : undefined,
+              })),
+            recommendations: engineResult.recommendations.map(r => ({
+              action: r.actionVerb,
+              target: r.target,
+              amount: r.amount,
+              reason: r.protects,
+            })),
+          };
+        } catch (error) {
+          console.error('Failed to inject finance context into briefing:', error);
+        }
+      }
+
       const maxTokens = ctxWithPhysics.inkMode ? INK_TOKEN_LIMITS[ctxWithPhysics.inkMode] : 400;
 
       // Window the conversation to avoid token bloat in long sessions
