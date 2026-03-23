@@ -261,7 +261,7 @@ function AppLayout() {
         <InkThread />
       </Suspense>
       <Suspense fallback={null}>
-        <CommandPalette />
+        <CommandPalette onOpenSettings={() => setShowSettings(true)} onOpenInk={openFullscreenInk} />
       </Suspense>
     </div>
   );

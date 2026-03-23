@@ -1,19 +1,22 @@
 import { useState, useEffect, useRef } from 'react';
 import {
-    Moon,
-    Sun,
     Zap,
-    Layout,
     Target,
-    Archive,
     Search,
     CheckCircle2,
     ArrowRight,
     Play,
+    Inbox,
+    Feather,
+    Settings,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { useTheme } from '@/context/ThemeContext';
 import { useApp } from '@/context/AppContext';
+
+interface CommandPaletteProps {
+    onOpenSettings: () => void;
+    onOpenInk: () => void;
+}
 
 interface CommandItem {
     id: string;
@@ -24,25 +27,21 @@ interface CommandItem {
     category: string;
 }
 
-export function CommandPalette() {
+export function CommandPalette({ onOpenSettings, onOpenInk }: CommandPaletteProps) {
     const [isOpen, setIsOpen] = useState(false);
     const [query, setQuery] = useState('');
     const [selectedIndex, setSelectedIndex] = useState(0);
-    const { mode, setMode } = useTheme();
-    const { activeView, setActiveView, toggleTask, committedTasks, selectedInboxId, bringForward, lockDay, unlockDay, enterFocus } = useApp();
+    const { setView, openInbox, toggleTask, committedTasks, selectedInboxId, bringForward, enterFocus } = useApp();
     const menuRef = useRef<HTMLDivElement>(null);
     const inputRef = useRef<HTMLInputElement>(null);
 
     const commands: CommandItem[] = [
-        // Views
-        { id: 'view-flow', title: "Open Today's Commit", icon: Zap, category: 'Navigation', action: () => setActiveView('flow') },
-        { id: 'view-goals', title: 'Open Weekly Intentions', icon: Target, category: 'Navigation', action: () => setActiveView('goals') },
-        { id: 'view-archive', title: 'Open Archive', icon: Archive, category: 'Navigation', action: () => setActiveView('archive') },
-
-        // Themes
-        { id: 'theme-dark', title: 'Dark Mode', icon: Moon, category: 'Theme', action: () => { unlockDay(); setMode('dark'); } },
-        { id: 'theme-light', title: 'Light Mode', icon: Sun, category: 'Theme', action: () => { unlockDay(); setMode('light'); } },
-        { id: 'theme-focus', title: 'Quiet Focus', icon: Layout, category: 'Theme', action: () => { lockDay(); setMode('focus'); } },
+        // Navigation
+        { id: 'view-flow', title: "Open Flow", icon: Zap, category: 'Navigation', action: () => setView('flow') },
+        { id: 'view-intentions', title: 'Open Intentions', icon: Target, category: 'Navigation', action: () => setView('intentions') },
+        { id: 'view-inbox', title: 'Open Inbox', icon: Inbox, category: 'Navigation', action: () => openInbox() },
+        { id: 'view-ink', title: 'Open Ink', icon: Feather, category: 'Navigation', action: () => { setIsOpen(false); onOpenInk(); } },
+        { id: 'view-settings', title: 'Open Settings', icon: Settings, category: 'Navigation', action: () => { setIsOpen(false); onOpenSettings(); } },
 
         // Actions
         { id: 'action-done', title: 'Mark active task done', icon: CheckCircle2, category: 'Action', action: () => { const active = committedTasks.find(t => t.active && t.status !== 'done'); if (active) void toggleTask(active.id); } },
@@ -141,7 +140,6 @@ export function CommandPalette() {
                     ) : (
                         filteredCommands.map((cmd, i) => {
                             const isSelected = i === selectedIndex;
-                            const isActive = (cmd.id === `view-${activeView}`) || (cmd.id === `theme-${mode}`);
 
                             return (
                                 <div
@@ -171,10 +169,6 @@ export function CommandPalette() {
                                             {cmd.category}
                                         </span>
                                     </div>
-
-                                    {isActive && (
-                                        <CheckCircle2 className="w-4 h-4 text-done opacity-60" />
-                                    )}
                                 </div>
                             );
                         })
