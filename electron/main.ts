@@ -8,7 +8,6 @@ import { registerFocusHandlers } from './focus';
 import { registerAnthropicHandlers } from './anthropic';
 import { registerInkContextHandlers } from './ink-context';
 import { registerChatHistoryHandlers } from './chat-history';
-import { registerCaptureHandlers, createCaptureWindow } from './capture';
 import { registerFinanceHandlers } from './finance';
 
 process.env.DIST = path.join(__dirname, '../dist');
@@ -20,7 +19,6 @@ const TRAY_ICON_PATH = path.join(process.env.VITE_PUBLIC!, 'icon-tray.png');
 
 let mainWindow: BrowserWindow | null;
 let pomodoroWindow: BrowserWindow | null = null;
-let captureWindow: BrowserWindow | null = null;
 let tray: Tray | null = null;
 const VITE_DEV_SERVER_URL = process.env['VITE_DEV_SERVER_URL'];
 
@@ -203,7 +201,6 @@ app.whenReady().then(() => {
   registerAnthropicHandlers();
   registerInkContextHandlers();
   registerChatHistoryHandlers();
-  registerCaptureHandlers();
   registerFinanceHandlers();
 
   ipcMain.handle('window:show-pomodoro', () => {
@@ -244,17 +241,6 @@ app.whenReady().then(() => {
 
   createWindow();
   createTray();
-
-  const registered = globalShortcut.register('CommandOrControl+Shift+.', () => {
-    if (!captureWindow || captureWindow.isDestroyed()) {
-      captureWindow = createCaptureWindow();
-    }
-    captureWindow.show();
-    captureWindow.focus();
-  });
-  if (!registered) {
-    console.warn('Quick Capture: failed to register Cmd+Shift+. global shortcut');
-  }
 });
 
 app.on('will-quit', () => {

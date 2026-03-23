@@ -44,7 +44,6 @@ describe('buildBriefingContext', () => {
       window: {
         showPomodoro: vi.fn(),
         hidePomodoro: vi.fn(),
-        hideCapture: vi.fn(),
         activate: vi.fn(),
         setFocusSize: vi.fn(),
         showMain: vi.fn(),
@@ -73,15 +72,6 @@ describe('buildBriefingContext', () => {
         load: vi.fn().mockResolvedValue([]),
         save: vi.fn().mockResolvedValue(true),
         clear: vi.fn().mockResolvedValue(true),
-      },
-      capture: {
-        save: vi.fn(),
-        update: vi.fn(),
-        getToday: vi.fn(),
-        deleteEntry: vi.fn(),
-        onNewEntry: vi.fn(() => vi.fn()),
-        onEntryUpdated: vi.fn(() => vi.fn()),
-        onEntryDeleted: vi.fn(() => vi.fn()),
       },
       finance: {
         getState: vi.fn().mockResolvedValue(null),

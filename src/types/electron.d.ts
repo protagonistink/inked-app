@@ -187,7 +187,6 @@ interface SettingsAPI {
 interface WindowAPI {
   showPomodoro: () => Promise<void>;
   hidePomodoro: () => Promise<void>;
-  hideCapture: () => Promise<void>;
   activate: () => Promise<void>;
   setFocusSize: (locked: boolean) => Promise<void>;
   showMain: () => Promise<void>;
@@ -207,22 +206,6 @@ interface ChatHistoryAPI {
   load: (date: string) => Promise<ChatMessage[]>;
   save: (date: string, messages: ChatMessage[]) => Promise<boolean>;
   clear: (date: string) => Promise<boolean>;
-}
-
-export interface ScratchEntry {
-  id: string;
-  text: string;
-  createdAt: string;
-}
-
-interface CaptureAPI {
-  save: (text: string) => Promise<ScratchEntry>;
-  update: (id: string, text: string) => Promise<ScratchEntry | null>;
-  getToday: () => Promise<ScratchEntry[]>;
-  deleteEntry: (id: string) => Promise<void>;
-  onNewEntry: (callback: (entry: ScratchEntry) => void) => () => void;
-  onEntryUpdated: (callback: (entry: ScratchEntry) => void) => () => void;
-  onEntryDeleted: (callback: (id: string) => void) => () => void;
 }
 
 interface FinanceAPI {
@@ -247,7 +230,6 @@ declare global {
       shell: ShellAPI;
       ink: InkAPI;
       chat: ChatHistoryAPI;
-      capture: CaptureAPI;
       finance: FinanceAPI;
     };
   }

@@ -22,11 +22,8 @@ const WeeklyPlanningWizard = lazy(() => import('./components/WeeklyPlanningWizar
 const MonthlyPlanningWizard = lazy(() => import('./components/MonthlyPlanningWizard').then((module) => ({ default: module.MonthlyPlanningWizard })));
 const InkThread = lazy(() => import('./components/Thread').then((module) => ({ default: module.InkThread })));
 const MorningBriefing = lazy(() => import('./components/MorningBriefing').then((module) => ({ default: module.MorningBriefing })));
-const Archive = lazy(() => import('./components/Archive').then((module) => ({ default: module.Archive })));
-const ScratchView = lazy(() => import('./components/ScratchView').then((module) => ({ default: module.ScratchView })));
 const TodaysFlow = lazy(() => import('./components/TodaysFlow').then((module) => ({ default: module.TodaysFlow })));
 const PlanningGuardrails = lazy(() => import('./components/PlanningGuardrails').then((module) => ({ default: module.PlanningGuardrails })));
-const MoneyView = lazy(() => import('./components/MoneyView').then((m) => ({ default: m.MoneyView })));
 
 const ASSISTANT_CLOSE_DELAY_MS = 140;
 
@@ -342,21 +339,6 @@ function AppLayout() {
             {activeView === 'goals' && (
               <Suspense fallback={null}>
                 <WeeklyIntentions />
-              </Suspense>
-            )}
-            {activeView === 'archive' && (
-              <Suspense fallback={null}>
-                <Archive />
-              </Suspense>
-            )}
-            {activeView === 'scratch' && (
-              <Suspense fallback={null}>
-                <ScratchView />
-              </Suspense>
-            )}
-            {activeView === 'money' && (
-              <Suspense fallback={null}>
-                <MoneyView />
               </Suspense>
             )}
           </div>

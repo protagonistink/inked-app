@@ -39,22 +39,10 @@ function FloatingPomodoroWindow() {
 }
 
 const isPomodoroWindow = window.location.hash === '#/pomodoro';
-const isCaptureWindow = window.location.hash === '#/capture';
-
-// Lazy import to keep capture window bundle small
-const CaptureWindow = React.lazy(() =>
-  import('./components/CaptureWindow').then((m) => ({ default: m.CaptureWindow }))
-);
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
-    {isCaptureWindow ? (
-      <ThemeProvider>
-        <React.Suspense fallback={null}>
-          <CaptureWindow />
-        </React.Suspense>
-      </ThemeProvider>
-    ) : isPomodoroWindow ? (
+    {isPomodoroWindow ? (
       <FloatingPomodoroWindow />
     ) : (
       <App />
