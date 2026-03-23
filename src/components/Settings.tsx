@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { X, Save, Clock, ListTodo, DollarSign, BookOpen, Shield } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { useTheme } from '@/context/ThemeContext';
 import type { CalendarListEntry } from '@/types';
 import type { LoadedSettings } from '@/types/electron';
 
@@ -22,6 +23,7 @@ export function Settings({ onClose }: SettingsProps) {
   const [tab, setTab] = useState<SettingsTab>('day');
   const [settings, setSettings] = useState<LoadedSettings | null>(null);
   const [saving, setSaving] = useState(false);
+  const { mode: themeMode, setMode: setThemeMode } = useTheme();
 
   // Day
   const [dayStartHour, setDayStartHour] = useState(9);
@@ -226,6 +228,19 @@ export function Settings({ onClose }: SettingsProps) {
         <div className="flex-1 overflow-y-auto px-6 py-5 flex flex-col gap-6 hide-scrollbar">
           {tab === 'day' && (
             <>
+              <Section title="Appearance">
+                <Field label="Color mode">
+                  <SegmentedControl
+                    options={[
+                      { value: 'light', label: 'Light' },
+                      { value: 'dark', label: 'Dark' },
+                    ]}
+                    value={themeMode === 'focus' ? 'dark' : themeMode}
+                    onChange={(v) => setThemeMode(v as 'light' | 'dark')}
+                  />
+                </Field>
+              </Section>
+
               <Section title="Work Hours">
                 <div className="grid grid-cols-2 gap-4">
                   <Field label="Day starts">
