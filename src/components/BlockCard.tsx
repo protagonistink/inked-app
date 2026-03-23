@@ -228,7 +228,6 @@ export function BlockCard({
     if (locked || !block.linkedTaskId || block.readOnly || isDone || dayCommitInfo.state !== 'started') return;
     event.stopPropagation();
     setActiveTask(block.linkedTaskId);
-    void window.api.window.showPomodoro();
     void window.api.pomodoro.start(block.linkedTaskId, block.title);
     void window.api.window.activate();
   }

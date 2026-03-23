@@ -111,8 +111,6 @@ describe('useScheduleManager', () => {
         save: vi.fn(),
       },
       window: {
-        showPomodoro: vi.fn(),
-        hidePomodoro: vi.fn(),
         activate: vi.fn(),
         setFocusSize: vi.fn(),
         showMain: vi.fn(),

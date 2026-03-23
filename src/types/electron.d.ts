@@ -185,8 +185,6 @@ interface SettingsAPI {
 }
 
 interface WindowAPI {
-  showPomodoro: () => Promise<void>;
-  hidePomodoro: () => Promise<void>;
   activate: () => Promise<void>;
   setFocusSize: (locked: boolean) => Promise<void>;
   showMain: () => Promise<void>;

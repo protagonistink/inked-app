@@ -18,7 +18,6 @@ const APP_ICON_PATH = path.join(__dirname, '../build/icon.png');
 const TRAY_ICON_PATH = path.join(process.env.VITE_PUBLIC!, 'icon-tray.png');
 
 let mainWindow: BrowserWindow | null;
-let pomodoroWindow: BrowserWindow | null = null;
 let tray: Tray | null = null;
 const VITE_DEV_SERVER_URL = process.env['VITE_DEV_SERVER_URL'];
 
@@ -74,9 +73,8 @@ function createTray() {
       click: () => {
         const lastTask = startLastUsedPomodoro();
         if (!lastTask) return;
-        if (!pomodoroWindow) createPomodoroWindow();
-        pomodoroWindow?.showInactive();
-        pomodoroWindow?.moveTop();
+        mainWindow?.show();
+        mainWindow?.focus();
       },
     },
     { type: 'separator' },
@@ -105,47 +103,6 @@ function createTray() {
   });
 }
 
-function createPomodoroWindow() {
-  const workArea = screen.getPrimaryDisplay().workArea;
-  const width = 220;
-  const height = 156;
-
-  pomodoroWindow = new BrowserWindow({
-    width,
-    height,
-    x: workArea.x + workArea.width - width - 20,
-    y: workArea.y + workArea.height - height - 20,
-    frame: false,
-    transparent: false,
-    alwaysOnTop: true,
-    resizable: false,
-    skipTaskbar: true,
-    hasShadow: true,
-    show: false,
-    backgroundColor: '#0A0A0A',
-    icon: APP_ICON_PATH,
-    webPreferences: {
-      preload: path.join(__dirname, 'preload.js'),
-      contextIsolation: true,
-      nodeIntegration: false,
-    },
-  });
-
-  pomodoroWindow.setAlwaysOnTop(true, 'screen-saver');
-  pomodoroWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
-
-  if (VITE_DEV_SERVER_URL) {
-    pomodoroWindow.loadURL(`${VITE_DEV_SERVER_URL}#/pomodoro`);
-  } else {
-    pomodoroWindow.loadFile(path.join(process.env.DIST!, 'index.html'), {
-      hash: '/pomodoro',
-    });
-  }
-
-  pomodoroWindow.on('closed', () => {
-    pomodoroWindow = null;
-  });
-}
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') {
@@ -203,19 +160,9 @@ app.whenReady().then(() => {
   registerChatHistoryHandlers();
   registerFinanceHandlers();
 
-  ipcMain.handle('window:show-pomodoro', () => {
-    if (!pomodoroWindow) createPomodoroWindow();
-    pomodoroWindow?.showInactive();
-    pomodoroWindow?.moveTop();
-  });
-
-  ipcMain.handle('window:hide-pomodoro', () => {
-    pomodoroWindow?.hide();
-  });
-
   ipcMain.handle('window:activate', () => {
     app.focus({ steal: true });
-    pomodoroWindow?.focus();
+    mainWindow?.focus();
   });
 
   ipcMain.handle('window:set-focus-size', () => {

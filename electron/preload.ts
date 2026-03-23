@@ -85,8 +85,6 @@ contextBridge.exposeInMainWorld('api', {
     },
   },
   window: {
-    showPomodoro: () => ipcRenderer.invoke('window:show-pomodoro'),
-    hidePomodoro: () => ipcRenderer.invoke('window:hide-pomodoro'),
     activate: () => ipcRenderer.invoke('window:activate'),
     setFocusSize: (locked: boolean) => ipcRenderer.invoke('window:set-focus-size', locked),
     showMain: () => ipcRenderer.invoke('window:show-main'),
