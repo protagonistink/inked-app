@@ -22,6 +22,7 @@ import type {
   TimeLogEntry,
   WeeklyGoal,
 } from '@/types';
+import type { AppMode, View } from '@/types/appMode';
 import { mergeScheduleBlocksWithRituals } from '@/lib/planner';
 import {
   loadPlannerState,
@@ -37,6 +38,7 @@ import { useCollectionActions } from '@/hooks/useCollectionActions';
 import { useDayLock } from '@/hooks/useDayLock';
 import { useMonthlyPlanning } from '@/hooks/useMonthlyPlanning';
 import { useWorkdayPrompts } from '@/hooks/useWorkdayPrompts';
+import { useAppMode } from '@/hooks/useAppMode';
 import {
   createPlannerFieldSetter,
   initialPlannerState,
@@ -45,12 +47,31 @@ import {
   storedPlannerStateToPlannerState,
 } from './plannerState';
 
-export type View = 'flow' | 'archive' | 'goals' | 'scratch' | 'money';
+export { type View };
+
+/** @deprecated Use View from appMode.ts — kept as alias for legacy consumers */
+export type LegacyView = 'flow' | 'archive' | 'goals' | 'scratch' | 'money';
 export type SourceView = 'cover' | 'asana' | 'gcal' | 'gmail';
 
 interface AppContextValue {
-  activeView: View;
-  setActiveView: (view: View) => void;
+  // AppMode state machine
+  mode: AppMode;
+  view: View;
+  focusTaskId: string | null;
+  completeBriefing: () => void;
+  startDay: () => void;
+  clickTask: (taskId: string) => void;
+  enterFocus: (taskId: string) => void;
+  exitFocus: () => void;
+  openInbox: () => void;
+  closeInbox: () => void;
+  setView: (view: View) => void;
+  resetAppMode: () => void;
+
+  /** @deprecated Use `view` / `setView` — alias kept for legacy consumers */
+  activeView: string;
+  /** @deprecated Use `view` / `setView` — alias kept for legacy consumers */
+  setActiveView: (view: string) => void;
   activeSource: SourceView;
   setActiveSource: (source: SourceView) => void;
   viewDate: Date;
@@ -93,7 +114,8 @@ interface AppContextValue {
   addAdHocBlock: (title: string, startHour: number, startMin: number, durationMins?: number) => string;
   nestTaskInBlock: (taskId: string, targetBlockId: string) => Promise<void>;
   unnestTaskFromBlock: (taskId: string, blockId: string) => void;
-  startDay: () => void;
+  /** Marks the daily plan as "dayStarted" (commit to planner). Use AppMode's startDay for mode transitions. */
+  commitDay: () => void;
   currentBlock: ScheduleBlock | null;
   nextBlock: ScheduleBlock | null;
   currentTask: PlannedTask | null;
@@ -145,7 +167,7 @@ interface AppContextValue {
 const AppContext = createContext<AppContextValue>(null!);
 
 export function AppProvider({ children }: { children: ReactNode }) {
-  const [activeView, setActiveView] = useState<View>('flow');
+  const appMode = useAppMode();
   const [activeSource, setActiveSource] = useState<SourceView>('cover');
   const [plannerState, dispatchPlanner] = useReducer(plannerReducer, initialPlannerState);
   const [selectedInboxId, setSelectedInboxId] = useState<string | null>(null);
@@ -257,7 +279,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
           });
         }
         // Always start on flow view — don't restore previous view
-        setActiveView('flow');
+        // (AppMode's own persistence handles mode/view restoration)
         if (stored?.activeSource) setActiveSource(stored.activeSource);
         setWeeklyPlanningLastCompleted(stored?.weeklyPlanningLastCompleted ?? null);
         if (stored?.workdayStart) setWorkdayStartState(stored.workdayStart);
@@ -321,7 +343,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
       dailyPlans,
       viewDate,
       timeLogs,
-      activeView,
       activeSource,
       rituals,
       countdowns,
@@ -498,7 +519,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     workdayEnd,
   });
 
-  const startDay = useCallback(() => {
+  const commitDay = useCallback(() => {
     updateDailyPlanForDate(viewDate, (prev) => ({ ...prev, dayStarted: true }));
   }, [updateDailyPlanForDate, viewDate]);
 
@@ -566,9 +587,32 @@ export function AppProvider({ children }: { children: ReactNode }) {
     unlockDay();
   }, [rituals, scheduleBlocks, setDailyPlan, setLastCommitTimestamp, setPlannedTasks, setScheduleBlocks, unlockDay, viewDate, workdayStart]);
 
+  // Aliases for legacy consumers — map old view names to new view system
+  const activeView = appMode.state.view === 'intentions' ? 'goals' : appMode.state.view;
+  const setActiveView = useCallback((v: string) => {
+    if (v === 'goals') appMode.setView('intentions');
+    else if (v === 'flow') appMode.setView('flow');
+    // Ignore archive/scratch/money — those views were removed
+  }, [appMode]);
+
   return (
     <AppContext.Provider
       value={{
+        // AppMode state machine
+        mode: appMode.state.mode,
+        view: appMode.state.view,
+        focusTaskId: appMode.state.focusTaskId,
+        completeBriefing: appMode.completeBriefing,
+        startDay: appMode.startDay,
+        clickTask: appMode.clickTask,
+        enterFocus: appMode.enterFocus,
+        exitFocus: appMode.exitFocus,
+        openInbox: appMode.openInbox,
+        closeInbox: appMode.closeInbox,
+        setView: appMode.setView,
+        resetAppMode: appMode.resetDay,
+
+        // Legacy aliases
         activeView,
         setActiveView,
         activeSource,
@@ -613,7 +657,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         addAdHocBlock,
         nestTaskInBlock,
         unnestTaskFromBlock,
-        startDay,
+        commitDay,
         currentBlock,
         nextBlock,
         currentTask,
