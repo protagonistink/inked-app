@@ -1,7 +1,6 @@
 import { lazy, Suspense, useState } from 'react';
 import { ChevronsRight, Sparkles } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { Sidebar } from '@/components/Sidebar';
 import { UnifiedInbox } from '@/components/UnifiedInbox';
 import { Timeline } from '@/components/Timeline';
 import { PomodoroTimer } from '@/components/PomodoroTimer';
@@ -15,7 +14,6 @@ export interface ExecutingModeProps {
   onEnterFocus: (taskId: string) => void;
   onOpenInk: () => void;
   onOpenInbox: () => void;
-  onSettings: () => void;
   onEndDay: () => void;
   // Ink assistant state
   assistantOpen: boolean;
@@ -32,7 +30,6 @@ export interface ExecutingModeProps {
 export function ExecutingMode({
   onOpenInk,
   onOpenInbox,
-  onSettings,
   onEndDay,
   assistantOpen,
   assistantPinned,
@@ -53,14 +50,6 @@ export function ExecutingMode({
 
   return (
     <>
-      {/* Sidebar collapsed by default in executing mode */}
-      <Sidebar
-        collapsed
-        onToggleCollapse={() => {}}
-        onSettingsClick={onSettings}
-        onShowBriefing={onOpenInk}
-      />
-
       <div className="flex flex-1 overflow-hidden">
         {/* Inbox — hidden by default, temporarily expandable */}
         <div className="relative shrink-0 h-full flex">

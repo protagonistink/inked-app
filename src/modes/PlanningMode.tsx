@@ -1,7 +1,6 @@
 import { lazy, Suspense, useState } from 'react';
 import { ChevronsLeft, ChevronsRight, Sparkles } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { Sidebar } from '@/components/Sidebar';
 import { UnifiedInbox } from '@/components/UnifiedInbox';
 import { Timeline } from '@/components/Timeline';
 import { RightRail } from '@/components/rail/RightRail';
@@ -13,7 +12,6 @@ const MorningBriefing = lazy(() =>
 export interface PlanningModeProps {
   onStartDay: () => void;
   onOpenInk: () => void;
-  onSettings: () => void;
   onEndDay: () => void;
   // Ink assistant state
   assistantOpen: boolean;
@@ -30,7 +28,6 @@ export interface PlanningModeProps {
 export function PlanningMode({
   onStartDay: _onStartDay,
   onOpenInk,
-  onSettings,
   onEndDay,
   assistantOpen,
   assistantPinned,
@@ -42,18 +39,10 @@ export function PlanningMode({
   onNewChat,
   onStreamingChange,
 }: PlanningModeProps) {
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [inboxCollapsed, setInboxCollapsed] = useState(false);
 
   return (
     <>
-      <Sidebar
-        collapsed={sidebarCollapsed}
-        onToggleCollapse={() => setSidebarCollapsed((v) => !v)}
-        onSettingsClick={onSettings}
-        onShowBriefing={onOpenInk}
-      />
-
       <div className="flex flex-1 overflow-hidden">
         {/* Inbox column */}
         <div className="relative shrink-0 h-full flex">

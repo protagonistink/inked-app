@@ -1,5 +1,4 @@
 import { lazy, Suspense } from 'react';
-import { Sidebar } from '@/components/Sidebar';
 
 const MorningBriefing = lazy(() =>
   import('@/components/MorningBriefing').then((m) => ({ default: m.MorningBriefing }))
@@ -10,7 +9,6 @@ const TodaysFlow = lazy(() =>
 
 export interface BriefingModeProps {
   onComplete: () => void;
-  onSettings: () => void;
   isEvening: boolean;
   briefingSessionId: number;
   onNewChat: () => void;
@@ -20,7 +18,6 @@ export interface BriefingModeProps {
 
 export function BriefingMode({
   onComplete,
-  onSettings,
   isEvening,
   briefingSessionId,
   onNewChat,
@@ -29,14 +26,6 @@ export function BriefingMode({
 }: BriefingModeProps) {
   return (
     <>
-      {/* Collapsed sidebar — icon strip only */}
-      <Sidebar
-        collapsed
-        onToggleCollapse={onComplete}
-        onSettingsClick={onSettings}
-        onShowBriefing={() => {}}
-      />
-
       {isEvening ? (
         <>
           {/* Evening: Today's Plan left, Ink right — review what you did */}

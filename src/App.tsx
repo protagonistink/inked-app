@@ -7,6 +7,7 @@ import { ThemeProvider } from './context/ThemeContext';
 import { AppProvider, useApp } from './context/AppContext';
 import { DragOverlay } from './components/DragOverlay';
 import { AtmosphereLayer } from './components/AtmosphereLayer';
+import { Sidebar } from './components/Sidebar';
 import { BriefingMode } from './modes/BriefingMode';
 import { PlanningMode } from './modes/PlanningMode';
 import { ExecutingMode } from './modes/ExecutingMode';
@@ -192,57 +193,62 @@ function AppLayout() {
       <div className="drag-region" />
       {!showInkOverlay && <AtmosphereLayer />}
 
-      {/* ═══ MODE ROUTER ═══ */}
-      {view === 'intentions' ? (
-        <Suspense fallback={null}>
-          <IntentionsView />
-        </Suspense>
-      ) : mode === 'briefing' ? (
-        <BriefingMode
-          onComplete={closeBriefing}
-          onSettings={() => setShowSettings(true)}
-          isEvening={isEveningReflection}
-          briefingSessionId={briefingSessionId}
-          onNewChat={() => setBriefingSessionId((n) => n + 1)}
-          onStreamingChange={setInkStreaming}
-          briefingMode={briefingMode}
-        />
-      ) : mode === 'focus' && focusTaskId ? (
-        <FocusMode taskId={focusTaskId} onExit={exitFocus} />
-      ) : mode === 'planning' ? (
-        <PlanningMode
-          onStartDay={startDay}
-          onOpenInk={openFullscreenInk}
-          onSettings={() => setShowSettings(true)}
-          onEndDay={() => { setPendingDayReset(true); openEveningReflection(); }}
-          assistantOpen={assistantOpen}
-          assistantPinned={assistantPinned}
-          onAssistantHover={openAssistantPreview}
-          onAssistantLeave={scheduleAssistantClose}
-          onToggleAssistant={togglePinnedAssistant}
-          inkStreaming={inkStreaming}
-          briefingSessionId={briefingSessionId}
-          onNewChat={() => setBriefingSessionId((n) => n + 1)}
-          onStreamingChange={setInkStreaming}
-        />
-      ) : (
-        <ExecutingMode
-          onEnterFocus={enterFocus}
-          onOpenInk={openFullscreenInk}
-          onOpenInbox={openInbox}
-          onSettings={() => setShowSettings(true)}
-          onEndDay={() => { setPendingDayReset(true); openEveningReflection(); }}
-          assistantOpen={assistantOpen}
-          assistantPinned={assistantPinned}
-          onAssistantHover={openAssistantPreview}
-          onAssistantLeave={scheduleAssistantClose}
-          onToggleAssistant={togglePinnedAssistant}
-          inkStreaming={inkStreaming}
-          briefingSessionId={briefingSessionId}
-          onNewChat={() => setBriefingSessionId((n) => n + 1)}
-          onStreamingChange={setInkStreaming}
-        />
+      {/* ═══ GLOBAL SIDEBAR (fixed overlay, always rendered except FocusMode) ═══ */}
+      {mode !== 'focus' && (
+        <Sidebar onSettingsClick={() => setShowSettings(true)} />
       )}
+
+      {/* ═══ MODE ROUTER ═══ */}
+      {/* Content offset: ml-12 accounts for the 48px fixed sidebar (hidden in FocusMode) */}
+      <div className={cn('flex flex-1 overflow-hidden', mode !== 'focus' && 'ml-12')}>
+        {view === 'intentions' ? (
+          <Suspense fallback={null}>
+            <IntentionsView />
+          </Suspense>
+        ) : mode === 'briefing' ? (
+          <BriefingMode
+            onComplete={closeBriefing}
+            isEvening={isEveningReflection}
+            briefingSessionId={briefingSessionId}
+            onNewChat={() => setBriefingSessionId((n) => n + 1)}
+            onStreamingChange={setInkStreaming}
+            briefingMode={briefingMode}
+          />
+        ) : mode === 'focus' && focusTaskId ? (
+          <FocusMode taskId={focusTaskId} onExit={exitFocus} />
+        ) : mode === 'planning' ? (
+          <PlanningMode
+            onStartDay={startDay}
+            onOpenInk={openFullscreenInk}
+            onEndDay={() => { setPendingDayReset(true); openEveningReflection(); }}
+            assistantOpen={assistantOpen}
+            assistantPinned={assistantPinned}
+            onAssistantHover={openAssistantPreview}
+            onAssistantLeave={scheduleAssistantClose}
+            onToggleAssistant={togglePinnedAssistant}
+            inkStreaming={inkStreaming}
+            briefingSessionId={briefingSessionId}
+            onNewChat={() => setBriefingSessionId((n) => n + 1)}
+            onStreamingChange={setInkStreaming}
+          />
+        ) : (
+          <ExecutingMode
+            onEnterFocus={enterFocus}
+            onOpenInk={openFullscreenInk}
+            onOpenInbox={openInbox}
+            onEndDay={() => { setPendingDayReset(true); openEveningReflection(); }}
+            assistantOpen={assistantOpen}
+            assistantPinned={assistantPinned}
+            onAssistantHover={openAssistantPreview}
+            onAssistantLeave={scheduleAssistantClose}
+            onToggleAssistant={togglePinnedAssistant}
+            inkStreaming={inkStreaming}
+            briefingSessionId={briefingSessionId}
+            onNewChat={() => setBriefingSessionId((n) => n + 1)}
+            onStreamingChange={setInkStreaming}
+          />
+        )}
+      </div>
 
       {/* ═══ GLOBAL OVERLAYS ═══ */}
       {showSettings && (
