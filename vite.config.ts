@@ -17,7 +17,7 @@ export default defineConfig({
         vite: {
           build: {
             rollupOptions: {
-              external: ['better-sqlite3', 'drizzle-orm', 'drizzle-orm/better-sqlite3', 'drizzle-orm/sqlite-core', 'plaid'],
+              external: (id) => ['better-sqlite3', 'plaid'].includes(id) || id.startsWith('drizzle-orm'),
             },
           },
         },
