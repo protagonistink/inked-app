@@ -11,7 +11,7 @@ const DEFAULT_MODEL = 'claude-sonnet-4-6';
 const AI_DEBUG = process.env.DEBUG_INKED_AI === '1';
 
 // Max conversation turns to send per request (prevents token bloat in long sessions)
-const MAX_HISTORY_TURNS = 12;
+const MAX_HISTORY_TURNS = 40;
 
 function logAI(message: string, ...args: unknown[]) {
   if (!AI_DEBUG) return;
