@@ -16,6 +16,7 @@ import { BASE_HOUR_HEIGHT, GRID_SNAP_MINS, MIN_VISIBLE_DAY_HOURS, clampMinutes, 
 import { OpenInterval } from './OpenInterval';
 import { CurrentTimeIndicator } from './CurrentTimeIndicator';
 import { AfterHoursVeil } from './AfterHoursVeil';
+import { BeforeHoursVeil } from './BeforeHoursVeil';
 import { DeadlineMargin } from './DeadlineMargin';
 import { BlockCard } from './BlockCard';
 
@@ -28,6 +29,7 @@ export function Timeline() {
     removeScheduleBlock,
     updateRitualEstimate,
     acceptProposal,
+    addAdHocBlock,
     toggleRitualSkipped,
     currentBlock,
     workdayStart,
@@ -40,6 +42,7 @@ export function Timeline() {
     viewDate,
     dayCommitInfo,
     unnestTaskFromBlock,
+    startDay,
   } = useApp();
   const timelineLocked = dayCommitInfo.state === 'closed';
   const { play } = useSound();
@@ -179,6 +182,31 @@ export function Timeline() {
   const [inkMessage, setInkMessage] = useState('');
   const [selectedBlockId, setSelectedBlockId] = useState<string | null>(null);
   const [selectedNestedTaskId, setSelectedNestedTaskId] = useState<string | null>(null);
+  const [adHocInput, setAdHocInput] = useState<{ startMins: number; top: number } | null>(null);
+
+  const handleGridDoubleClick = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
+    if (timelineLocked) return;
+    // Only trigger on the grid background, not on blocks
+    if ((e.target as HTMLElement).closest('[data-task-id]')) return;
+    const grid = gridRef.current;
+    if (!grid) return;
+    const rect = grid.getBoundingClientRect();
+    const scrollTop = grid.scrollTop;
+    const y = e.clientY - rect.top + scrollTop;
+    const rawMinutes = (y / hourHeight) * 60 + dayStartMins;
+    const snappedMinutes = snapToCalendarGrid(rawMinutes, GRID_SNAP_MINS);
+    const topPx = timeToTop(snappedMinutes, dayStartMins, hourHeight);
+    setAdHocInput({ startMins: snappedMinutes, top: topPx });
+  }, [dayStartMins, hourHeight, timelineLocked]);
+
+  const commitAdHocBlock = useCallback((title: string) => {
+    if (!adHocInput || !title.trim()) { setAdHocInput(null); return; }
+    const startHour = Math.floor(adHocInput.startMins / 60);
+    const startMin = adHocInput.startMins % 60;
+    addAdHocBlock(title.trim(), startHour, startMin, 60);
+    setAdHocInput(null);
+    play('paper');
+  }, [adHocInput, addAdHocBlock, play]);
 
   // Migrate selection when block ID changes (e.g., local → gcal sync)
   const prevBlocksRef = useRef(scheduleBlocks);
@@ -379,6 +407,47 @@ export function Timeline() {
     window.addEventListener('mouseup', onUp);
   }, [dayStartMins, setWorkdayEnd, visibleDayEndMins]);
 
+  const beginWorkdayStartDrag = useCallback((event: React.MouseEvent<HTMLElement>) => {
+    event.preventDefault();
+    event.stopPropagation();
+
+    const originGrid = gridRef.current;
+    if (!originGrid) return;
+
+    let dragged = false;
+    const workdayEndMins = workdayEnd.hour * 60 + workdayEnd.min;
+
+    const applyBoundary = (clientY: number) => {
+      const grid = gridRef.current;
+      if (!grid) return;
+      const rect = grid.getBoundingClientRect();
+      const scrollTop = grid.scrollTop;
+      const y = clientY - rect.top + scrollTop;
+      const rawMinutes = (y / hourHeight) * 60 + dayStartMins;
+      const snappedMinutes = snapToCalendarGrid(rawMinutes, GRID_SNAP_MINS);
+      const clampedMinutes = Math.max(EARLIEST_VISIBLE_HOUR * 60, Math.min(snappedMinutes, workdayEndMins - 60));
+      setWorkdayStart(Math.floor(clampedMinutes / 60), clampedMinutes % 60);
+    };
+
+    function onMove(moveEvent: MouseEvent) {
+      dragged = true;
+      applyBoundary(moveEvent.clientY);
+    }
+
+    function onUp(upEvent: MouseEvent) {
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+      if (dragged) {
+        applyBoundary(upEvent.clientY);
+        return;
+      }
+      setIsEditingStart(true);
+    }
+
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+  }, [dayStartMins, hourHeight, setWorkdayStart, workdayEnd]);
+
   const resolvePlacement = useCallback((rawMinutes: number, durationMins: number, targetBlockId?: string) => {
     const snappedMinutes = snapToCalendarGrid(rawMinutes, GRID_SNAP_MINS);
     const desiredMinutes = clampMinutes(snappedMinutes, dayStartMins, dayEndMins, durationMins);
@@ -574,6 +643,18 @@ export function Timeline() {
         </div>
       </div>
 
+      {/* Start Day button — shown when tasks are committed but day not started */}
+      {dayCommitInfo.state === 'committed' && dayCommitInfo.totalBlocks > 0 && (
+        <div className="px-8 pb-4">
+          <button
+            onClick={startDay}
+            className="w-full rounded-xl border border-accent-warm/25 bg-accent-warm/[0.06] px-4 py-3 text-[13px] font-medium tracking-[0.06em] text-accent-warm/80 hover:bg-accent-warm/[0.12] hover:text-accent-warm transition-colors"
+          >
+            Start Day →
+          </button>
+        </div>
+      )}
+
       {/* Deadline strip above calendar (normal mode) */}
       {/* Calendar + Deadline column (focus mode: side by side) */}
       <div className="flex flex-1 min-h-0" style={{ minWidth: 0 }}>
@@ -583,7 +664,8 @@ export function Timeline() {
           (gridRef as React.MutableRefObject<HTMLDivElement | null>).current = el;
         }}
         id="timeline-grid"
-        onClick={(e) => { if (!(e.target as HTMLElement).closest('[data-task-id]')) setSelectedBlockId(null); }}
+        onClick={(e) => { if (!(e.target as HTMLElement).closest('[data-task-id]')) { setSelectedBlockId(null); } }}
+        onDoubleClick={handleGridDoubleClick}
         className={cn('dot-grid flex-1 overflow-y-auto relative hide-scrollbar transition-colors min-w-0', isOver && 'bg-accent-warm/[0.035]')}
       >
         <div className="w-full max-w-4xl mx-auto relative" style={{ height: `${totalHeight}px` }}>
@@ -615,6 +697,14 @@ export function Timeline() {
               }}
             />
           )}
+
+          <BeforeHoursVeil
+            workdayStart={workdayStart}
+            onDragBoundaryStart={beginWorkdayStartDrag}
+            isLight={isLight}
+            dayStartMins={dayStartMins}
+            hourHeight={hourHeight}
+          />
 
           {isTodayView && (
             <AfterHoursVeil
@@ -676,6 +766,29 @@ export function Timeline() {
                 hourHeight={hourHeight}
               />
             ))}
+            {adHocInput && (
+              <div
+                className="absolute left-1 right-1 z-30 rounded-lg border border-dashed border-accent-warm/40 bg-[#1a1a1a] px-3 py-2"
+                style={{ top: `${adHocInput.top}px`, height: `${hourHeight}px` }}
+              >
+                <input
+                  autoFocus
+                  placeholder="Event name..."
+                  className="w-full bg-transparent border-none outline-none font-display italic text-[14px] text-slate-100 placeholder:text-text-muted/30"
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') commitAdHocBlock(e.currentTarget.value);
+                    if (e.key === 'Escape') setAdHocInput(null);
+                  }}
+                  onBlur={(e) => {
+                    if (e.currentTarget.value.trim()) commitAdHocBlock(e.currentTarget.value);
+                    else setAdHocInput(null);
+                  }}
+                />
+                <span className="text-[10px] text-text-muted/40 tracking-wider">
+                  {formatTimeShort(Math.floor(adHocInput.startMins / 60), adHocInput.startMins % 60)}
+                </span>
+              </div>
+            )}
           </div>
         </div>
       </div>

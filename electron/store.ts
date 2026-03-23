@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { app, ipcMain } from 'electron';
 import Store from 'electron-store';
+import { getSecure, setSecure } from './secure-store';
 
 const store = new Store({
   defaults: {
@@ -71,6 +72,14 @@ const store = new Store({
       survivalNeeds: 0,
       untouchableNeeds: 0,
     },
+    // User preferences
+    userPrefs: {
+      day: { startHour: 9, startMin: 0, endHour: 18, endMin: 0, timeboxDefault: 60, syncFrequencyMins: 2 },
+      story: { narrativeStyle: 'practical', storyDepth: 'summary', tone: 'direct', accountabilityLevel: 'firm' },
+      tasks: { priorityRule: 'balanced', notificationIntensity: 'standard', distractionFiltering: 'show_all' },
+      privacy: { sensitiveDataMasking: false, auditLog: false },
+      moneyPrefs: { dueDateWindowDays: 7, alertSeverity: 'warning', financialSensitivity: 'soft', timeHorizonDays: 7 },
+    },
   },
 });
 
@@ -108,6 +117,7 @@ export function registerStoreHandlers() {
     const gcal = (store.get('gcal') as Record<string, unknown> | undefined) ?? {};
     const pomodoro = (store.get('pomodoro') as Record<string, unknown> | undefined) ?? {};
     const focus = (store.get('focus') as Record<string, unknown> | undefined) ?? {};
+    const prefs = (store.get('userPrefs') as Record<string, Record<string, unknown>> | undefined) ?? {};
     let buildDate: string | null = null;
 
     try {
@@ -152,6 +162,35 @@ export function registerStoreHandlers() {
         plaidClientIdConfigured: Boolean(store.get('plaid.clientId')),
         plaidSecretConfigured: Boolean(store.get('plaid.secret')),
       },
+      day: {
+        startHour: Number(prefs.day?.startHour ?? 9),
+        startMin: Number(prefs.day?.startMin ?? 0),
+        endHour: Number(prefs.day?.endHour ?? 18),
+        endMin: Number(prefs.day?.endMin ?? 0),
+        timeboxDefault: Number(prefs.day?.timeboxDefault ?? 60),
+        syncFrequencyMins: Number(prefs.day?.syncFrequencyMins ?? 2),
+      },
+      story: {
+        narrativeStyle: String(prefs.story?.narrativeStyle ?? 'practical'),
+        storyDepth: String(prefs.story?.storyDepth ?? 'summary'),
+        tone: String(prefs.story?.tone ?? 'direct'),
+        accountabilityLevel: String(prefs.story?.accountabilityLevel ?? 'firm'),
+      },
+      tasks: {
+        priorityRule: String(prefs.tasks?.priorityRule ?? 'balanced'),
+        notificationIntensity: String(prefs.tasks?.notificationIntensity ?? 'standard'),
+        distractionFiltering: String(prefs.tasks?.distractionFiltering ?? 'show_all'),
+      },
+      privacy: {
+        sensitiveDataMasking: Boolean(prefs.privacy?.sensitiveDataMasking ?? false),
+        auditLog: Boolean(prefs.privacy?.auditLog ?? false),
+      },
+      moneyPrefs: {
+        dueDateWindowDays: Number(prefs.moneyPrefs?.dueDateWindowDays ?? 7),
+        alertSeverity: String(prefs.moneyPrefs?.alertSeverity ?? 'warning'),
+        financialSensitivity: String(prefs.moneyPrefs?.financialSensitivity ?? 'soft'),
+        timeHorizonDays: Number(prefs.moneyPrefs?.timeHorizonDays ?? 7),
+      },
     };
   });
 
@@ -171,6 +210,26 @@ export function registerStoreHandlers() {
     if ('blockedSites' in payload) store.set('focus.blockedSites', payload.blockedSites);
     if ('plaidClientId' in payload) store.set('plaid.clientId', payload.plaidClientId);
     if ('plaidSecret' in payload) store.set('plaid.secret', payload.plaidSecret);
+    // User preferences
+    if ('dayStartHour' in payload) store.set('userPrefs.day.startHour', payload.dayStartHour);
+    if ('dayStartMin' in payload) store.set('userPrefs.day.startMin', payload.dayStartMin);
+    if ('dayEndHour' in payload) store.set('userPrefs.day.endHour', payload.dayEndHour);
+    if ('dayEndMin' in payload) store.set('userPrefs.day.endMin', payload.dayEndMin);
+    if ('timeboxDefault' in payload) store.set('userPrefs.day.timeboxDefault', payload.timeboxDefault);
+    if ('syncFrequencyMins' in payload) store.set('userPrefs.day.syncFrequencyMins', payload.syncFrequencyMins);
+    if ('narrativeStyle' in payload) store.set('userPrefs.story.narrativeStyle', payload.narrativeStyle);
+    if ('storyDepth' in payload) store.set('userPrefs.story.storyDepth', payload.storyDepth);
+    if ('tone' in payload) store.set('userPrefs.story.tone', payload.tone);
+    if ('accountabilityLevel' in payload) store.set('userPrefs.story.accountabilityLevel', payload.accountabilityLevel);
+    if ('priorityRule' in payload) store.set('userPrefs.tasks.priorityRule', payload.priorityRule);
+    if ('notificationIntensity' in payload) store.set('userPrefs.tasks.notificationIntensity', payload.notificationIntensity);
+    if ('distractionFiltering' in payload) store.set('userPrefs.tasks.distractionFiltering', payload.distractionFiltering);
+    if ('sensitiveDataMasking' in payload) store.set('userPrefs.privacy.sensitiveDataMasking', payload.sensitiveDataMasking);
+    if ('auditLog' in payload) store.set('userPrefs.privacy.auditLog', payload.auditLog);
+    if ('dueDateWindowDays' in payload) store.set('userPrefs.moneyPrefs.dueDateWindowDays', payload.dueDateWindowDays);
+    if ('alertSeverity' in payload) store.set('userPrefs.moneyPrefs.alertSeverity', payload.alertSeverity);
+    if ('financialSensitivity' in payload) store.set('userPrefs.moneyPrefs.financialSensitivity', payload.financialSensitivity);
+    if ('timeHorizonDays' in payload) store.set('userPrefs.moneyPrefs.timeHorizonDays', payload.timeHorizonDays);
     return true;
   });
 }

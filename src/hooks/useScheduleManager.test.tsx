@@ -81,6 +81,7 @@ describe('useScheduleManager', () => {
       asana: {
         getTasks: vi.fn(),
         addComment: vi.fn(),
+        completeTask: vi.fn(),
       },
       gcal: {
         getEvents: vi.fn(),

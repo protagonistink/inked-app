@@ -1,6 +1,6 @@
 import { ipcMain, IpcMainInvokeEvent } from 'electron';
 import { store } from './store';
-import type { InkContext, InkMode } from '../src/types';
+import type { BriefingContext, ChatMessage, InkContext, InkMode, UserPhysics } from '../src/types';
 import { INK_TOKEN_LIMITS } from '../src/lib/ink-mode';
 import { getEngineState } from './finance';
 
@@ -12,91 +12,6 @@ const AI_DEBUG = process.env.DEBUG_INKED_AI === '1';
 
 // Max conversation turns to send per request (prevents token bloat in long sessions)
 const MAX_HISTORY_TURNS = 12;
-
-interface ChatMessage {
-  role: 'user' | 'assistant';
-  content: string;
-}
-
-interface GCalEventContext {
-  title: string;
-  startTime: string;
-  endTime: string;
-  isAllDay: boolean;
-}
-
-interface UserPhysics {
-  focusBlockLength: number;       // ideal uninterrupted focus block in minutes
-  peakEnergyWindow: string;       // e.g. "9am–12pm"
-  commonDerailers: string[];      // e.g. ["email rabbit holes", "scope creep mid-task"]
-  planningStyle: string;          // e.g. "needs explicit time boxes or tasks float"
-  recoveryPattern: string;        // e.g. "30 min context-switch cost between deep work modes"
-  warningSignals: string[];       // e.g. ["over-scheduling mornings", "no creative block before noon"]
-}
-
-// UserPhysics defaults live in store.ts — do not duplicate here
-
-interface BriefingContext {
-  date: string;
-  currentTime: string;
-  currentHour: number;
-  currentMinute: number;
-  weeklyGoals: Array<{ title: string; why?: string }>;
-  asanaTasks: Array<{
-    title: string;
-    dueOn: string | null;
-    priority?: string;
-    project?: string;
-    notes?: string;
-    tags?: string[];
-    daysSinceAdded?: number;
-  }>;
-  gcalEvents: GCalEventContext[];
-  availableFocusMinutes: number;
-  scheduledMinutes: number;
-  committedTasks: Array<{ title: string; estimateMins: number; weeklyGoal: string }>;
-  doneTasks: Array<{ title: string; estimateMins: number; weeklyGoal: string }>;
-  countdowns: Array<{ title: string; daysUntil: number }>;
-  workdayStartHour: number;
-  workdayStartMin: number;
-  workdayEndHour: number;
-  workdayEndMin: number;
-  isAfterWorkday: boolean;
-  minutesPastClose: number;
-  userPhysics?: UserPhysics;
-  monthlyOneThing?: string;
-  monthlyWhy?: string;
-  inkMode?: InkMode;
-  finance?: {
-    weeklyRemaining: number;
-    weeklyRemainingContext: 'normal' | 'tight' | 'comfortable';
-    billsCovered: boolean;
-    cognitiveState: 'calm' | 'alert' | 'compressed';
-    upcoming: Array<{
-      name: string;
-      amount: number;
-      daysUntil: number;
-      covered: boolean;
-      category: 'personal' | 'business';
-    }>;
-    actionItems: Array<{
-      description: string;
-      daysOverdue?: number;
-      amount?: number;
-    }>;
-    recommendations: Array<{
-      action: string;
-      target: string;
-      amount: number;
-      reason: string;
-    }>;
-    businessPipeline?: {
-      confirmedThisMonth: number;
-      invoicedOutstanding: number;
-      overdueInvoices: number;
-    };
-  };
-}
 
 function logAI(message: string, ...args: unknown[]) {
   if (!AI_DEBUG) return;

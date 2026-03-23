@@ -224,8 +224,9 @@ function AppLayout() {
   }, [isFirstLoadOfDay, isInitialized]);
 
   const isOpening = layoutPhase === 'opening' && showBriefing;
-  const sidebarIsCollapsed = isFocus || sidebarCollapsed || dayLocked || showBriefing;
-  const sourcePanelAutoCollapsed = isFocus;
+  const dayStarted = dayCommitInfo.state === 'started';
+  const sidebarIsCollapsed = isFocus || sidebarCollapsed || dayLocked || showBriefing || dayStarted;
+  const sourcePanelAutoCollapsed = isFocus || dayStarted;
   const sourcePanelIsCollapsed = sourcePanelAutoCollapsed || sourcePanelCollapsed;
 
   return (

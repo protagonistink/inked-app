@@ -17,6 +17,8 @@ contextBridge.exposeInMainWorld('api', {
     getTasks: (options?: AsanaTaskQuery) => ipcRenderer.invoke('asana:get-tasks', options),
     addComment: (taskId: string, text: string) =>
       ipcRenderer.invoke('asana:add-comment', taskId, text),
+    completeTask: (taskId: string, completed: boolean) =>
+      ipcRenderer.invoke('asana:complete-task', taskId, completed),
   },
   // Google Calendar
   gcal: {

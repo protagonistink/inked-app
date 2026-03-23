@@ -12,6 +12,7 @@ describe('buildBriefingContext', () => {
       asana: {
         getTasks: vi.fn().mockResolvedValue({ success: true, data: [] }),
         addComment: vi.fn(),
+        completeTask: vi.fn(),
       },
       gcal: {
         getEvents: vi.fn().mockResolvedValue({ success: true, data: [] }),

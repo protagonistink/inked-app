@@ -259,19 +259,27 @@ export function useTaskActions({
 
   const toggleTask = useCallback(async (id: string) => {
     const linkedBlock = scheduleBlocks.find((block) => block.linkedTaskId === id);
+    const task = plannedTasks.find((t) => t.id === id);
+    const nextDone = task?.status !== 'done';
 
     setPlannedTasks((prev) =>
-      prev.map((task) => {
-        if (task.id !== id) return task;
-        const nextDone = task.status !== 'done';
+      prev.map((t) => {
+        if (t.id !== id) return t;
         return {
-          ...task,
+          ...t,
           status: nextDone ? 'done' : linkedBlock ? 'scheduled' : 'committed',
           active: false,
         };
       })
     );
-  }, [scheduleBlocks, setPlannedTasks]);
+
+    // Sync completion to Asana for Asana-sourced tasks
+    if (task?.source === 'asana' && task.sourceId) {
+      window.api.asana.completeTask(task.sourceId, nextDone).catch((err) => {
+        console.warn('Failed to sync task completion to Asana:', err);
+      });
+    }
+  }, [plannedTasks, scheduleBlocks, setPlannedTasks]);
 
   const setActiveTask = useCallback((id: string) => {
     setPlannedTasks((prev) =>

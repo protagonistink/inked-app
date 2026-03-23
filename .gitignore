@@ -5,3 +5,23 @@ release/
 .DS_Store
 *.log
 .worktrees/
+
+# Secrets & credentials
+.env
+.env.*
+*.pem
+*.key
+credentials*
+
+# Database files
+*.db
+*.db-wal
+*.db-shm
+*.sqlite
+*.sqlite3
+*.sqlite-wal
+*.sqlite-shm
+
+# Editor/tool local state
+.claude/
+.superpowers/

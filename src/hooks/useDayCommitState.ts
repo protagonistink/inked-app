@@ -67,6 +67,8 @@ export function deriveDayCommitInfo({
   let state: DayCommitInfo['state'];
   if (isPast) {
     state = 'closed';
+  } else if ((totalBlocks > 0 || dailyPlan.committedTaskIds.length > 0) && dailyPlan.dayStarted) {
+    state = 'started';
   } else if (totalBlocks > 0 || dailyPlan.committedTaskIds.length > 0) {
     state = 'committed';
   } else {

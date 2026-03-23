@@ -91,8 +91,10 @@ interface AppContextValue {
   unscheduleTaskBlock: (id: string, goalId?: string) => Promise<void>;
   clearFocusBlocks: () => Promise<void>;
   acceptProposal: (blockId: string) => Promise<void>;
+  addAdHocBlock: (title: string, startHour: number, startMin: number, durationMins?: number) => string;
   nestTaskInBlock: (taskId: string, targetBlockId: string) => Promise<void>;
   unnestTaskFromBlock: (taskId: string, blockId: string) => void;
+  startDay: () => void;
   currentBlock: ScheduleBlock | null;
   nextBlock: ScheduleBlock | null;
   currentTask: PlannedTask | null;
@@ -479,6 +481,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     unscheduleTaskBlock,
     clearFocusBlocks,
     acceptProposal,
+    addAdHocBlock,
   } = useScheduleManager({
     plannedTasks,
     scheduleBlocks,
@@ -512,6 +515,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
     viewDate: viewDateValue,
     workdayEnd,
   });
+
+  const startDay = useCallback(() => {
+    updateDailyPlanForDate(viewDate, (prev) => ({ ...prev, dayStarted: true }));
+  }, [updateDailyPlanForDate, viewDate]);
 
   const logFocusSession = useCallback((input: { taskId: string | null; durationMins: number; endedAt?: string }) => {
     const endedAt = input.endedAt || new Date().toISOString();
@@ -572,7 +579,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
           : task
       )
     );
-    setDailyPlan((prev) => ({ ...prev, committedTaskIds: [] }));
+    setDailyPlan((prev) => ({ ...prev, committedTaskIds: [], dayStarted: false }));
     setLastCommitTimestamp(0);
     unlockDay();
   }, [rituals, scheduleBlocks, setDailyPlan, setLastCommitTimestamp, setPlannedTasks, setScheduleBlocks, unlockDay, viewDate, workdayStart]);
@@ -621,8 +628,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
         unscheduleTaskBlock,
         clearFocusBlocks,
         acceptProposal,
+        addAdHocBlock,
         nestTaskInBlock,
         unnestTaskFromBlock,
+        startDay,
         currentBlock,
         nextBlock,
         currentTask,

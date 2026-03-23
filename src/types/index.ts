@@ -166,6 +166,7 @@ export interface DailyPlan {
   date: string;
   committedTaskIds: string[];
   hasEverCommitted?: boolean;
+  dayStarted?: boolean;
 }
 
 export interface PlanningDateOption {
@@ -179,7 +180,7 @@ export interface PlanningDateOption {
 // Day Commit State — derived state machine for the Today's Commit view
 // ---------------------------------------------------------------------------
 
-export type DayCommitState = 'briefing' | 'committed' | 'closed';
+export type DayCommitState = 'briefing' | 'committed' | 'started' | 'closed';
 
 export interface DayCommitInfo {
   state: DayCommitState;
@@ -224,6 +225,96 @@ export interface TimeLogEntry {
 // ---------------------------------------------------------------------------
 
 export type InkMode = 'morning' | 'midday' | 'evening' | 'sunday-interview';
+
+// ---------------------------------------------------------------------------
+// Shared AI / IPC types — single source of truth for renderer + main process
+// ---------------------------------------------------------------------------
+
+export interface ChatMessage {
+  role: 'user' | 'assistant';
+  content: string;
+}
+
+export interface GCalEventContext {
+  title: string;
+  startTime: string;
+  endTime: string;
+  isAllDay: boolean;
+}
+
+export interface UserPhysics {
+  focusBlockLength: number;
+  peakEnergyWindow: string;
+  commonDerailers: string[];
+  planningStyle: string;
+  recoveryPattern: string;
+  warningSignals: string[];
+}
+
+export interface BriefingContext {
+  date: string;
+  planningDate: string;
+  planningDateLabel: string;
+  planningDateIsToday: boolean;
+  currentTime: string;
+  currentHour: number;
+  currentMinute: number;
+  weeklyGoals: Array<{ title: string; why?: string }>;
+  asanaTasks: Array<{
+    title: string;
+    dueOn: string | null;
+    priority?: string;
+    project?: string;
+    notes?: string;
+    tags?: string[];
+    daysSinceAdded?: number;
+  }>;
+  gcalEvents: GCalEventContext[];
+  availableFocusMinutes: number;
+  scheduledMinutes: number;
+  committedTasks: Array<{ title: string; estimateMins: number; weeklyGoal: string }>;
+  doneTasks: Array<{ title: string; estimateMins: number; weeklyGoal: string }>;
+  countdowns: Array<{ title: string; daysUntil: number }>;
+  workdayStartHour: number;
+  workdayStartMin: number;
+  workdayEndHour: number;
+  workdayEndMin: number;
+  isAfterWorkday: boolean;
+  minutesPastClose: number;
+  userPhysics?: UserPhysics;
+  monthlyOneThing?: string;
+  monthlyWhy?: string;
+  inkMode?: InkMode;
+  finance?: {
+    weeklyRemaining: number;
+    weeklyRemainingContext: 'normal' | 'tight' | 'comfortable';
+    billsCovered: boolean;
+    cognitiveState: 'calm' | 'alert' | 'compressed';
+    upcoming: Array<{
+      name: string;
+      amount: number;
+      daysUntil: number;
+      covered: boolean;
+      category: 'personal' | 'business';
+    }>;
+    actionItems: Array<{
+      description: string;
+      daysOverdue?: number;
+      amount?: number;
+    }>;
+    recommendations: Array<{
+      action: string;
+      target: string;
+      amount: number;
+      reason: string;
+    }>;
+    businessPipeline?: {
+      confirmedThisMonth: number;
+      invoicedOutstanding: number;
+      overdueInvoices: number;
+    };
+  };
+}
 
 export interface InkJournalEntry {
   date: string;                    // YYYY-MM-DD

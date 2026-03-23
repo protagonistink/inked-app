@@ -116,6 +116,10 @@
   @apply w-full bg-bg border border-border rounded-md px-3 py-2 text-[13px] text-text-primary placeholder:text-text-muted focus:outline-none focus:border-text-muted/30 focus:bg-bg-elevated;
 }
 
+.settings-btn {
+  @apply px-3 py-2 rounded-md text-[12px] font-medium bg-bg-elevated text-text-primary hover:bg-border/30 transition-colors;
+}
+
 .workspace-header {
   display: flex;
   align-items: flex-start;

@@ -92,6 +92,7 @@ export function useBriefingState({
     plannedTasks,
     monthlyPlan,
     scheduleTaskBlock,
+    clearFocusBlocks,
   } = useApp();
 
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -341,13 +342,15 @@ export function useBriefingState({
   const executeSchedule = useCallback(async () => {
     const toSchedule = scheduleChips.filter((chip) => chip.selected);
     setViewDate(new Date(`${proposalDate}T12:00:00`));
+    // Clear existing focus blocks before repopulating with the new plan
+    await clearFocusBlocks();
     for (const chip of toSchedule) {
       const taskId = chip.matchedTaskId || addLocalTask(chip.title, chip.matchedGoalId || undefined, proposalDate);
       await scheduleTaskBlock(taskId, chip.startHour, chip.startMin, chip.durationMins, chip.title, proposalDate);
     }
     setCommitted(true);
     closeTimeoutRef.current = window.setTimeout(() => { onClose(); }, 1500);
-  }, [addLocalTask, onClose, proposalDate, scheduleChips, scheduleTaskBlock, setViewDate]);
+  }, [addLocalTask, clearFocusBlocks, onClose, proposalDate, scheduleChips, scheduleTaskBlock, setViewDate]);
 
   const handleKeyDown = (e: KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {

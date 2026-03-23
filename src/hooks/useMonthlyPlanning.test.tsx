@@ -11,6 +11,7 @@ describe('useMonthlyPlanning', () => {
       asana: {
         getTasks: vi.fn(),
         addComment: vi.fn(),
+        completeTask: vi.fn(),
       },
       gcal: {
         getEvents: vi.fn(),
@@ -80,6 +81,12 @@ describe('useMonthlyPlanning', () => {
         onNewEntry: vi.fn(() => vi.fn()),
         onEntryUpdated: vi.fn(() => vi.fn()),
         onEntryDeleted: vi.fn(() => vi.fn()),
+      },
+      finance: {
+        getState: vi.fn(),
+        refresh: vi.fn(),
+        plaidLink: vi.fn(),
+        plaidExchange: vi.fn(),
       },
     };
   });

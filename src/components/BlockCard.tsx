@@ -76,7 +76,7 @@ export function BlockCard({
   onSelectNestedTask?: (taskId: string) => void;
 }) {
   const { isFocus } = useTheme();
-  const { plannedTasks, weeklyGoals, setActiveTask, toggleTask, nestTaskInBlock } = useApp();
+  const { plannedTasks, weeklyGoals, setActiveTask, toggleTask, nestTaskInBlock, dayCommitInfo } = useApp();
   const linkedTask = block.linkedTaskId ? plannedTasks.find((task) => task.id === block.linkedTaskId) : null;
   const isDone = linkedTask?.status === 'done';
 
@@ -134,12 +134,19 @@ export function BlockCard({
   const top = timeToTop(((draft?.startHour ?? block.startHour) * 60) + (draft?.startMin ?? block.startMin), dayStartMins, hourHeight);
   const rawHeight = ((draft?.durationMins ?? block.durationMins) / 60) * hourHeight;
   const MIN_BLOCK_HEIGHT = 32;
-  const height = Math.max(rawHeight, MIN_BLOCK_HEIGHT);
+  const NESTED_TITLE_HEIGHT = 32;
+  const NESTED_ROW_HEIGHT = 20;
+  const nestedCount = block.nestedTaskIds?.length ?? 0;
+  const nestedMinHeight = block.kind === 'break' && nestedCount > 0
+    ? NESTED_TITLE_HEIGHT + nestedCount * NESTED_ROW_HEIGHT
+    : MIN_BLOCK_HEIGHT;
+  const height = Math.max(rawHeight, nestedMinHeight, MIN_BLOCK_HEIGHT);
   const isCompact = rawHeight < 48;
   const actualLabel = actualMins > 0 ? formatRoundedHours(actualMins, true) : null;
 
   // Determine block variant class
-  const blockVariant = block.kind === 'hard'
+  const isAdHoc = block.kind === 'hard' && !block.readOnly && block.source === 'local';
+  const blockVariant = block.kind === 'hard' && !isAdHoc
     ? 't-gcal'
     : block.kind === 'break'
       ? 't-ritual'
@@ -218,7 +225,7 @@ export function BlockCard({
   }
 
   function startFocus(event: React.MouseEvent<HTMLButtonElement>) {
-    if (locked || !block.linkedTaskId || block.readOnly || isDone) return;
+    if (locked || !block.linkedTaskId || block.readOnly || isDone || dayCommitInfo.state !== 'started') return;
     event.stopPropagation();
     setActiveTask(block.linkedTaskId);
     void window.api.window.showPomodoro();
@@ -351,7 +358,7 @@ export function BlockCard({
       </div>
       )}
 
-      {!isCompact && nestedTasks.length > 0 && (
+      {(block.kind === 'break' || !isCompact) && nestedTasks.length > 0 && (
         <div className="relative z-10 flex flex-col gap-0.5 mt-1">
           {nestedTasks.map((task) => (
             <div

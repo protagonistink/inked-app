@@ -78,6 +78,7 @@ describe('useTaskActions', () => {
       asana: {
         getTasks: vi.fn(),
         addComment: vi.fn(),
+        completeTask: vi.fn(),
       },
       gcal: {
         getEvents: vi.fn(),
@@ -201,8 +202,17 @@ describe('useTaskActions', () => {
   it('toggleTask restores scheduled state when reopening a completed scheduled task', async () => {
     const { result } = renderHook(() => useHarness());
 
+    // First toggle: mark done
     await act(async () => {
       await result.current.toggleTask('task-1');
+    });
+
+    await waitFor(() => {
+      expect(result.current.plannedTasks[0]).toMatchObject({ status: 'done' });
+    });
+
+    // Second toggle: restore to scheduled
+    await act(async () => {
       await result.current.toggleTask('task-1');
     });
 

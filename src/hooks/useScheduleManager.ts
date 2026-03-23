@@ -295,6 +295,7 @@ export function useScheduleManager({
     await scheduleTaskBlock(block.linkedTaskId, startHour, startMin, durationMins);
   }, [scheduleBlocks, scheduleTaskBlock, setScheduleBlocks]);
 
+  // Removes all focus blocks (including manually adjusted ones) — intentional for re-commit workflow
   const clearFocusBlocks = useCallback(async () => {
     const focusBlocks = scheduleBlocks.filter((block) => !block.readOnly && block.kind === 'focus');
     if (focusBlocks.length === 0) return;
@@ -337,6 +338,22 @@ export function useScheduleManager({
     );
   }, [setScheduleBlocks]);
 
+  const addAdHocBlock = useCallback((title: string, startHour: number, startMin: number, durationMins = 60) => {
+    const id = `adhoc-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+    const block: ScheduleBlock = {
+      id,
+      title,
+      startHour,
+      startMin,
+      durationMins,
+      kind: 'hard',
+      readOnly: false,
+      source: 'local',
+    };
+    setScheduleBlocks((prev) => [...prev, block].sort(sortBlocksByStart));
+    return id;
+  }, [setScheduleBlocks]);
+
   return {
     scheduleTaskBlock,
     updateScheduleBlock,
@@ -346,5 +363,6 @@ export function useScheduleManager({
     unscheduleTaskBlock,
     clearFocusBlocks,
     acceptProposal,
+    addAdHocBlock,
   };
 }

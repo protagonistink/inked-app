@@ -1,103 +1,23 @@
 import type {
   ApiResult,
   AsanaTask,
+  BriefingContext,
   CalendarEventInput,
   CalendarListEntry,
+  ChatMessage,
   GCalEvent,
   InkContext,
   InkJournalEntry,
   InkMode,
   PomodoroState,
+  UserPhysics,
 } from './index';
 
-export interface ChatMessage {
-  role: 'user' | 'assistant';
-  content: string;
-}
+export type { BriefingContext, ChatMessage, GCalEventContext, UserPhysics } from './index';
 
 export interface AsanaTaskQuery {
   daysAhead?: number;
   limit?: number;
-}
-
-export interface GCalEventContext {
-  title: string;
-  startTime: string;
-  endTime: string;
-  isAllDay: boolean;
-}
-
-export interface BriefingContext {
-  date: string;
-  planningDate: string;
-  planningDateLabel: string;
-  planningDateIsToday: boolean;
-  currentTime: string;
-  currentHour: number;
-  currentMinute: number;
-  weeklyGoals: Array<{ title: string; why?: string }>;
-  asanaTasks: Array<{
-    title: string;
-    dueOn: string | null;
-    priority?: string;
-    project?: string;
-    notes?: string;
-    tags?: string[];
-    daysSinceAdded?: number;
-  }>;
-  gcalEvents: GCalEventContext[];
-  availableFocusMinutes: number;
-  scheduledMinutes: number;
-  committedTasks: Array<{ title: string; estimateMins: number; weeklyGoal: string }>;
-  doneTasks: Array<{ title: string; estimateMins: number; weeklyGoal: string }>;
-  countdowns: Array<{ title: string; daysUntil: number }>;
-  workdayStartHour: number;
-  workdayStartMin: number;
-  workdayEndHour: number;
-  workdayEndMin: number;
-  isAfterWorkday: boolean;
-  minutesPastClose: number;
-  monthlyOneThing?: string;
-  monthlyWhy?: string;
-  inkMode?: InkMode;
-  finance?: {
-    weeklyRemaining: number;
-    weeklyRemainingContext: 'normal' | 'tight' | 'comfortable';
-    billsCovered: boolean;
-    cognitiveState: 'calm' | 'alert' | 'compressed';
-    upcoming: Array<{
-      name: string;
-      amount: number;
-      daysUntil: number;
-      covered: boolean;
-      category: 'personal' | 'business';
-    }>;
-    actionItems: Array<{
-      description: string;
-      daysOverdue?: number;
-      amount?: number;
-    }>;
-    recommendations: Array<{
-      action: string;
-      target: string;
-      amount: number;
-      reason: string;
-    }>;
-    businessPipeline?: {
-      confirmedThisMonth: number;
-      invoicedOutstanding: number;
-      overdueInvoices: number;
-    };
-  };
-}
-
-export interface UserPhysics {
-  focusBlockLength: number;
-  peakEnergyWindow: string;
-  commonDerailers: string[];
-  planningStyle: string;
-  recoveryPattern: string;
-  warningSignals: string[];
 }
 
 export interface PhysicsLogEntry {
@@ -129,6 +49,7 @@ declare module '*.png' {
 interface AsanaAPI {
   getTasks: (options?: AsanaTaskQuery) => Promise<ApiResult<AsanaTask[]>>;
   addComment: (taskId: string, text: string) => Promise<ApiResult<null>>;
+  completeTask: (taskId: string, completed: boolean) => Promise<ApiResult<null>>;
 }
 
 interface GCalAPI {
@@ -191,6 +112,36 @@ export interface LoadedSettings {
     plaidClientIdConfigured: boolean;
     plaidSecretConfigured: boolean;
   };
+  // User preferences
+  day: {
+    startHour: number;
+    startMin: number;
+    endHour: number;
+    endMin: number;
+    timeboxDefault: number;
+    syncFrequencyMins: number;
+  };
+  story: {
+    narrativeStyle: 'concise' | 'practical' | 'reflective' | 'screenwriter';
+    storyDepth: 'summary' | 'chapters' | 'full';
+    tone: 'direct' | 'encouraging' | 'blunt' | 'coach';
+    accountabilityLevel: 'gentle' | 'firm' | 'blunt';
+  };
+  tasks: {
+    priorityRule: 'deadlines' | 'energy' | 'revenue' | 'balanced';
+    notificationIntensity: 'minimal' | 'standard' | 'high';
+    distractionFiltering: 'show_all' | 'top_priorities' | 'today_only';
+  };
+  privacy: {
+    sensitiveDataMasking: boolean;
+    auditLog: boolean;
+  };
+  moneyPrefs: {
+    dueDateWindowDays: number;
+    alertSeverity: 'quiet' | 'warning' | 'urgent';
+    financialSensitivity: 'soft' | 'hard';
+    timeHorizonDays: number;
+  };
 }
 
 export interface SettingsUpdate {
@@ -206,6 +157,26 @@ export interface SettingsUpdate {
   blockedSites?: string[];
   plaidClientId?: string;
   plaidSecret?: string;
+  // User preferences
+  dayStartHour?: number;
+  dayStartMin?: number;
+  dayEndHour?: number;
+  dayEndMin?: number;
+  timeboxDefault?: number;
+  syncFrequencyMins?: number;
+  narrativeStyle?: string;
+  storyDepth?: string;
+  tone?: string;
+  accountabilityLevel?: string;
+  priorityRule?: string;
+  notificationIntensity?: string;
+  distractionFiltering?: string;
+  sensitiveDataMasking?: boolean;
+  auditLog?: boolean;
+  dueDateWindowDays?: number;
+  alertSeverity?: string;
+  financialSensitivity?: string;
+  timeHorizonDays?: number;
 }
 
 interface SettingsAPI {

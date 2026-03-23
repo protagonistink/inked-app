@@ -62,4 +62,20 @@ export function registerAsanaHandlers() {
       }
     }
   );
+
+  ipcMain.handle(
+    'asana:complete-task',
+    async (_event, taskId: string, completed: boolean) => {
+      try {
+        if (!/^\d+$/.test(taskId)) throw new Error('Invalid Asana task ID');
+        const result = await asanaFetch(`/tasks/${taskId}`, {
+          method: 'PUT',
+          body: JSON.stringify({ data: { completed } }),
+        });
+        return { success: true, data: result.data };
+      } catch (error) {
+        return { success: false, error: (error as Error).message };
+      }
+    }
+  );
 }
