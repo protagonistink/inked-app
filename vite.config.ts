@@ -24,6 +24,13 @@ export default defineConfig({
       },
       preload: {
         input: 'electron/preload.ts',
+        vite: {
+          build: {
+            rollupOptions: {
+              external: (id: string) => ['better-sqlite3', 'plaid'].includes(id) || id.startsWith('drizzle-orm'),
+            },
+          },
+        },
       },
     }),
   ],
