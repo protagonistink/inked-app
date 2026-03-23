@@ -408,7 +408,7 @@ function ActiveWeekContent() {
     rituals,
     workdayStart,
     workdayEnd,
-    setActiveView,
+    setView,
   } = useApp();
   const attentionData = useAttentionBalance();
 
@@ -486,7 +486,7 @@ function ActiveWeekContent() {
               Looks right?
             </p>
             <button
-              onClick={() => setActiveView('flow')}
+              onClick={() => setView('flow')}
               className="px-5 py-2 rounded-md bg-accent-warm/10 border border-accent-warm/20 text-[13px] font-medium text-accent-warm hover:bg-accent-warm/15 transition-colors"
             >
               Plan your day →

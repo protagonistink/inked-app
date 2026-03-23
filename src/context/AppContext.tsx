@@ -49,8 +49,6 @@ import {
 
 export { type View };
 
-/** @deprecated Use View from appMode.ts — kept as alias for legacy consumers */
-export type LegacyView = 'flow' | 'archive' | 'goals' | 'scratch' | 'money';
 export type SourceView = 'cover' | 'asana' | 'gcal' | 'gmail';
 
 interface AppContextValue {
@@ -68,10 +66,6 @@ interface AppContextValue {
   setView: (view: View) => void;
   resetAppMode: () => void;
 
-  /** @deprecated Use `view` / `setView` — alias kept for legacy consumers */
-  activeView: string;
-  /** @deprecated Use `view` / `setView` — alias kept for legacy consumers */
-  setActiveView: (view: string) => void;
   activeSource: SourceView;
   setActiveSource: (source: SourceView) => void;
   viewDate: Date;
@@ -587,14 +581,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
     unlockDay();
   }, [rituals, scheduleBlocks, setDailyPlan, setLastCommitTimestamp, setPlannedTasks, setScheduleBlocks, unlockDay, viewDate, workdayStart]);
 
-  // Aliases for legacy consumers — map old view names to new view system
-  const activeView = appMode.state.view === 'intentions' ? 'goals' : appMode.state.view;
-  const setActiveView = useCallback((v: string) => {
-    if (v === 'goals') appMode.setView('intentions');
-    else if (v === 'flow') appMode.setView('flow');
-    // Ignore archive/scratch/money — those views were removed
-  }, [appMode]);
-
   return (
     <AppContext.Provider
       value={{
@@ -612,9 +598,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
         setView: appMode.setView,
         resetAppMode: appMode.resetDay,
 
-        // Legacy aliases
-        activeView,
-        setActiveView,
         activeSource,
         setActiveSource,
         viewDate: viewDateValue,

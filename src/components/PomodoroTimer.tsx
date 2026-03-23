@@ -17,7 +17,7 @@ function formatSeconds(seconds: number): string {
 }
 
 export function PomodoroTimer() {
-  const { logFocusSession, plannedTasks, setActiveTask, setActiveView, toggleTask } = useApp();
+  const { logFocusSession, plannedTasks, setActiveTask, setView, toggleTask } = useApp();
   const { setMode } = useTheme();
   const [state, setState] = useState<PomodoroState>({
     isRunning: false,
@@ -96,7 +96,7 @@ export function PomodoroTimer() {
       });
     });
     return unsubscribe;
-  }, [logFocusSession, plannedTasks, setActiveTask, setActiveView, setMode]);
+  }, [logFocusSession, plannedTasks, setActiveTask, setView, setMode]);
 
   useEffect(() => {
     if (state.isRunning) {
@@ -132,7 +132,7 @@ export function PomodoroTimer() {
               <button
                 onClick={() => {
                   void toggleTask(timeboxDecision.taskId);
-                  setActiveView('flow');
+                  setView('flow');
                   setMode('dark');
                   setTimeboxDecision(null);
                 }}
@@ -152,7 +152,7 @@ export function PomodoroTimer() {
               </button>
               <button
                 onClick={() => {
-                  setActiveView('flow');
+                  setView('flow');
                   setMode('dark');
                   setTimeboxDecision(null);
                 }}
