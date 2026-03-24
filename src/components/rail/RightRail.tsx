@@ -13,9 +13,9 @@ import { MoneyMoves } from './MoneyMoves';
 
 // Goal color palette — matches the rest of the app's right-rail patterns
 const INTENTION_COLORS = [
-  'rgba(229,85,71,0.5)',
-  'rgba(74,109,140,0.45)',
-  'rgba(145,159,174,0.35)',
+  'rgba(167,139,250,0.7)',
+  'rgba(45,212,191,0.6)',
+  'rgba(251,191,36,0.6)',
 ];
 
 interface RightRailProps {

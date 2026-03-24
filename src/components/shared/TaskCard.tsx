@@ -161,9 +161,9 @@ export function TaskCard({
   const staggerClass = index < 8 ? `stagger-${Math.min(index + 1, 6)}` : '';
 
   // Thread color matching weekly goal — same palette as Timeline blocks
-  const threadBorderColor = goalIndex === 0 ? 'rgba(229,85,71,0.5)'
-    : goalIndex === 1 ? 'rgba(74,109,140,0.5)'
-    : goalIndex === 2 ? 'rgba(145,159,174,0.4)'
+  const threadBorderColor = goalIndex === 0 ? 'rgba(167,139,250,0.7)'
+    : goalIndex === 1 ? 'rgba(45,212,191,0.6)'
+    : goalIndex === 2 ? 'rgba(251,191,36,0.6)'
     : 'rgba(100,116,139,0.3)';
 
   return (

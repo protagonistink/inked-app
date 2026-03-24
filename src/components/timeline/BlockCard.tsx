@@ -83,17 +83,39 @@ export function BlockCard({
   // Dynamic thread color for border-left based on weekly goal
   const goalId = linkedTask?.weeklyGoalId ?? null;
   const goalIndex = goalId ? weeklyGoals.findIndex((g) => g.id === goalId) : -1;
-  const threadColor = goalIndex === 0 ? 'rgba(229,85,71,0.5)'
-    : goalIndex === 1 ? 'rgba(74,109,140,0.5)'
-    : goalIndex === 2 ? 'rgba(145,159,174,0.4)'
-    : 'rgba(100,116,139,0.3)';
-  // Highlighter tint — faintest whisper of goal color so text pops
-  const tintColor = goalIndex === 0 ? 'rgba(229,85,71,0.025)'
-    : goalIndex === 1 ? 'rgba(74,109,140,0.025)'
-    : goalIndex === 2 ? 'rgba(145,159,174,0.02)'
-    : block.kind === 'break' ? 'rgba(250,250,250,0.015)'
-    : block.kind === 'hard' ? 'rgba(145,159,174,0.025)'
-    : 'rgba(100,116,139,0.02)';
+  // Intention colors: purple / teal / amber
+  const intentionColor = goalIndex === 0 ? 'rgb(167,139,250)'
+    : goalIndex === 1 ? 'rgb(45,212,191)'
+    : goalIndex === 2 ? 'rgb(251,191,36)'
+    : 'rgb(100,116,139)';
+  const intentionColorAt6Percent = goalIndex === 0 ? 'rgba(167,139,250,0.06)'
+    : goalIndex === 1 ? 'rgba(45,212,191,0.06)'
+    : goalIndex === 2 ? 'rgba(251,191,36,0.06)'
+    : 'rgba(100,116,139,0.04)';
+
+  // Derive block style based on kind
+  const isAdHocEarly = block.kind === 'hard' && !block.readOnly && block.source === 'local';
+  const isGcal = block.kind === 'hard' && !isAdHocEarly;
+  const isRitual = block.kind === 'break';
+  const isTaskBlock = !isGcal && !isRitual;
+
+  // Style sets per block type
+  const blockBorderLeft = isRitual
+    ? '3px dashed rgba(255,240,220,0.1)'
+    : isGcal
+      ? '3px solid rgba(255,240,220,0.05)'
+      : `3px solid ${intentionColor}`;
+  const blockBackground = isGcal
+    ? 'rgba(255,240,220,0.02)'
+    : isRitual
+      ? 'rgba(255,240,220,0.015)'
+      : `linear-gradient(90deg, ${intentionColorAt6Percent} 0%, rgba(255,240,220,0.02) 40%)`;
+  const blockBorder = isRitual
+    ? '1px dashed rgba(255,240,220,0.06)'
+    : isGcal
+      ? '1px solid rgba(255,240,220,0.05)'
+      : '1px solid rgba(255,240,220,0.04)';
+  const blockBorderRadius = isTaskBlock ? '2px 8px 8px 2px' : undefined;
   const nestedTasks = useMemo(
     () => (block.nestedTaskIds ?? [])
       .map((id) => plannedTasks.find((t) => t.id === id))
@@ -128,6 +150,12 @@ export function BlockCard({
   useEffect(() => {
     previewRef(getEmptyImage(), { captureDraggingState: true });
   }, [previewRef]);
+
+  // Box shadow for NOW/active block (computed after isDragging is available)
+  const blockBoxShadow = isNow && !isDragging && isTaskBlock
+    ? '0 0 0 1px rgba(200,60,47,0.3), 0 2px 10px rgba(200,60,47,0.05)'
+    : undefined;
+
   const [draft, setDraft] = useState<{ startHour: number; startMin: number; durationMins: number } | null>(null);
   const draftRef = useRef<{ startHour: number; startMin: number; durationMins: number } | null>(null);
   const didDragRef = useRef(false);
@@ -264,7 +292,6 @@ export function BlockCard({
         isDragging && 'opacity-30 scale-[0.98]',
         isDone && 'opacity-70 saturate-[0.8]',
         isSelected && 'ring-1 ring-accent-warm/50',
-        isNow && !isDragging && !isSelected && 'ring-1 ring-active/40',
         isNestOver && 'ring-2 ring-accent-warm/40'
       )}
       style={{
@@ -272,8 +299,11 @@ export function BlockCard({
         height: `${height}px`,
         left: colCount > 1 ? `calc(${(colIndex * 100) / colCount}% + 4px)` : '4px',
         right: colCount > 1 ? `calc(${((colCount - colIndex - 1) * 100) / colCount}% + 4px)` : '4px',
-        borderLeftColor: block.kind === 'focus' ? threadColor : undefined,
-        backgroundColor: blockVariant !== 't-draft' ? tintColor : undefined,
+        borderLeft: blockVariant !== 't-draft' ? blockBorderLeft : undefined,
+        border: blockVariant !== 't-draft' ? blockBorder : undefined,
+        borderRadius: blockBorderRadius,
+        background: blockVariant !== 't-draft' ? blockBackground : undefined,
+        boxShadow: blockBoxShadow,
         zIndex: isSelected ? 6 : isNow ? 5 : colIndex + 1,
       }}
     >
