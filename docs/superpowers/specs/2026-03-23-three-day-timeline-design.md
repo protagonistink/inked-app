@@ -130,8 +130,11 @@ type ScheduleAction =
 
 ---
 
-## Open Questions
+## Resolved Questions
 
-1. Should the 3-day view be the only timeline option, or should there be a "today only" toggle for when you just want focus?
+1. **Today-only toggle?** Yes — focus mode drops to just the current task, timer, and upcoming tasks. The 3-day view is for planning/executing modes.
+
+## Open Questions (resolve during build)
+
 2. When rituals auto-place, should Ink announce each one or just place silently?
-3. Should yesterday collapse entirely after noon (you're deep in today by then)?
+3. Should yesterday collapse entirely after noon?
