@@ -34,11 +34,13 @@ export function Sidebar({ onSettingsClick }: SidebarProps) {
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
     >
-      {/* Background — solid panel */}
+      {/* Background panel — solid when collapsed, glassmorphic when expanded */}
       <div
         className={cn(
-          'absolute inset-0 transition-[width] duration-200 ease-out bg-bg-elevated border-r border-border-subtle',
-          hovered ? 'w-[200px]' : 'w-12'
+          'absolute inset-0 transition-all duration-200 ease-out border-r',
+          hovered
+            ? 'w-[200px] backdrop-blur-[16px] bg-[rgba(28,27,34,0.85)] border-[rgba(255,240,220,0.06)] shadow-[4px_0_24px_rgba(0,0,0,0.2)]'
+            : 'w-12 bg-bg-elevated border-border-subtle'
         )}
       />
 
