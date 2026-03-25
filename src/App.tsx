@@ -178,9 +178,6 @@ function AppLayout() {
       window.api.menu.onOpenInk(() => openFullscreenInk()),
       window.api.menu.onStartDay(() => startDay()),
       window.api.menu.onGoToday(() => setViewDate(new Date())),
-      window.api.menu.onToggleSidebar(() => { /* sidebar toggle not yet wired */ }),
-      window.api.menu.onNewTask(() => { /* new task modal not yet wired */ }),
-      window.api.menu.onNewEvent(() => { /* new event modal not yet wired */ }),
     ];
     return () => cleanups.forEach((fn) => fn());
   }, [setView, openFullscreenInk, startDay, setViewDate]);
