@@ -1,5 +1,4 @@
-import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react';
-import { format } from 'date-fns';
+import { lazy, Suspense, useEffect, useState } from 'react';
 import { DndProvider } from 'react-dnd';
 import { HTML5Backend } from 'react-dnd-html5-backend';
 import { AnimatePresence, motion } from 'motion/react';
@@ -11,6 +10,7 @@ import { DragOverlay } from './components/shared/DragOverlay';
 import { ErrorBoundary, RootFallback, ModeFallback } from './components/shared/ErrorBoundary';
 import { AtmosphereLayer } from './components/AtmosphereLayer';
 import { Sidebar } from './components/chrome/Sidebar';
+import { useBriefingLifecycle } from './hooks/useBriefingLifecycle';
 import { BriefingMode } from './modes/BriefingMode';
 import { PlanningMode } from './modes/PlanningMode';
 import { ExecutingMode } from './modes/ExecutingMode';
@@ -26,111 +26,19 @@ function AppLayout() {
     mode,
     view,
     focusTaskId,
-    completeBriefing,
     startDay,
     enterFocus,
     exitFocus,
     openInbox,
-    isInitialized,
-    dayCommitInfo,
-    resetDay,
     setView,
     setViewDate,
     resetAppMode,
   } = useApp();
 
-  const {
-    assistantOpen,
-    assistantPinned,
-    closeAssistant,
-    setBriefingMode,
-  } = useInkAssistant();
+  const { assistantOpen, assistantPinned, closeAssistant } = useInkAssistant();
+  const { isEveningReflection, openFullscreenInk, requestDayReset, closeBriefing } = useBriefingLifecycle();
 
-  // --- Local UI state ---
   const [showSettings, setShowSettings] = useState(false);
-  const [isEveningReflection, setIsEveningReflection] = useState(false);
-  const [pendingDayReset, setPendingDayReset] = useState(false);
-
-  const autoBriefingCheckedRef = useRef(false);
-
-  // --- Fullscreen Ink / briefing ---
-  const openFullscreenInk = useCallback(() => {
-    closeAssistant();
-    const shouldRunBriefing = dayCommitInfo.state === 'briefing' && !dayCommitInfo.hadBlocks;
-    setBriefingMode(shouldRunBriefing ? 'briefing' : 'chat');
-    setIsEveningReflection(false);
-  }, [closeAssistant, setBriefingMode, dayCommitInfo.hadBlocks, dayCommitInfo.state]);
-
-  const openEveningReflection = useCallback(() => {
-    closeAssistant();
-    setBriefingMode('chat');
-    setIsEveningReflection(true);
-  }, [closeAssistant, setBriefingMode]);
-
-  // --- Auto-briefing check ---
-  const checkAutoBriefing = useCallback(async (isCancelled: () => boolean) => {
-    if (dayCommitInfo.state !== 'briefing' || dayCommitInfo.hadBlocks) return;
-
-    const key = `briefing.dismissed.${format(new Date(), 'yyyy-MM-dd')}`;
-    const [settings, dismissed] = await Promise.all([
-      window.api.settings.load(),
-      window.api.store.get(key),
-    ]);
-
-    if (!isCancelled() && settings.anthropic.configured && !dismissed) {
-      openFullscreenInk();
-    } else if (!isCancelled() && !settings.anthropic.configured) {
-      completeBriefing();
-    }
-  }, [dayCommitInfo.state, dayCommitInfo.hadBlocks, openFullscreenInk, completeBriefing]);
-
-  useEffect(() => {
-    if (!isInitialized || autoBriefingCheckedRef.current) return;
-    autoBriefingCheckedRef.current = true;
-    void window.api.chat.clear(format(new Date(), 'yyyy-MM-dd'));
-
-    let cancelled = false;
-    void checkAutoBriefing(() => cancelled);
-
-    return () => { cancelled = true; };
-  }, [isInitialized, checkAutoBriefing]);
-
-  // --- Close briefing ---
-  const closeBriefing = useCallback(() => {
-    const wasEvening = isEveningReflection;
-    const today = format(new Date(), 'yyyy-MM-dd');
-    if (pendingDayReset) {
-      void resetDay();
-      setPendingDayReset(false);
-    }
-    setIsEveningReflection(false);
-    completeBriefing();
-    window.api.store.set(`briefing.dismissed.${today}`, true);
-
-    if (wasEvening) {
-      void window.api.chat.load(today).then((msgs) => {
-        if (msgs.length < 2) return;
-        const transcript = msgs.map((m) => `${m.role}: ${m.content}`).join('\n').slice(0, 2000);
-        void window.api.ai.chat(
-          [{ role: 'user', content: `Summarize this end-of-day conversation in 1-2 sentences as a carry-forward note for tomorrow morning. Focus on what landed, what slipped, and any decisions made. Be concise and factual.\n\n${transcript}` }],
-          {} as any
-        ).then((res) => {
-          if (!res.success || !res.content) return;
-          void window.api.ink.readContext().then((ctx) => {
-            const entry = ctx.journalEntries?.find((e) => e.date === today);
-            if (entry) {
-              entry.eveningReflection = res.content!;
-              void window.api.ink.appendJournal(entry);
-            }
-          });
-        });
-      }).finally(() => {
-        void window.api.chat.clear(today);
-      });
-      return;
-    }
-    void window.api.chat.clear(today);
-  }, [pendingDayReset, resetDay, isEveningReflection, completeBriefing]);
 
   // --- Escape key ---
   useEffect(() => {
@@ -235,7 +143,7 @@ function AppLayout() {
                 <PlanningMode
                   onStartDay={startDay}
                   onOpenInk={openFullscreenInk}
-                  onEndDay={() => { setPendingDayReset(true); openEveningReflection(); }}
+                  onEndDay={requestDayReset}
                 />
               </ErrorBoundary>
             ) : (
@@ -244,7 +152,7 @@ function AppLayout() {
                   onEnterFocus={enterFocus}
                   onOpenInk={openFullscreenInk}
                   onOpenInbox={openInbox}
-                  onEndDay={() => { setPendingDayReset(true); openEveningReflection(); }}
+                  onEndDay={requestDayReset}
                 />
               </ErrorBoundary>
             )}
