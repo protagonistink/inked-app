@@ -2,6 +2,7 @@ import { useCallback, type Dispatch, type SetStateAction } from 'react';
 import type { AsanaTask, DailyRitual, GCalEvent, PlannedTask, ScheduleBlock } from '@/types';
 import { asPlannedTask, eventToBlock, mergeScheduleBlocksWithRituals } from '@/lib/planner';
 import { withTimeout } from '@/lib/ipc';
+import { flushAsanaQueue } from '@/lib/asanaRetryQueue';
 
 interface SyncStatus {
   asana: string | null;
@@ -130,6 +131,9 @@ export function useExternalPlannerSync({
     }
 
     setSyncStatus((prevStatus) => ({ ...prevStatus, loading: false }));
+
+    // Opportunistically retry any failed Asana syncs
+    void flushAsanaQueue();
   }, [hydrateCalendar, setPlannedTasks, setSyncStatus, viewDate]);
 
   return {

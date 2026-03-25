@@ -18,7 +18,6 @@ export function installMockApi() {
     },
     pomodoro: {
       start: vi.fn(),
-      load: vi.fn(),
       pause: vi.fn(),
       stop: vi.fn(),
       skip: vi.fn(),

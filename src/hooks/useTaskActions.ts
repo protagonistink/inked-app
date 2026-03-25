@@ -2,6 +2,7 @@ import { useCallback, type Dispatch, type SetStateAction } from 'react';
 import type { DailyPlan, PlannedTask, ScheduleBlock, WeeklyGoal } from '@/types';
 import { currentWeekStart } from '@/lib/planner';
 import { withTimeout } from '@/lib/ipc';
+import { enqueueAsanaSync } from '@/lib/asanaRetryQueue';
 
 interface TaskActionsOptions {
   weeklyGoals: WeeklyGoal[];
@@ -292,8 +293,8 @@ export function useTaskActions({
 
     // Sync completion to Asana for Asana-sourced tasks
     if (task?.source === 'asana' && task.sourceId) {
-      window.api.asana.completeTask(task.sourceId, nextDone).catch((err) => {
-        console.warn('Failed to sync task completion to Asana:', err);
+      window.api.asana.completeTask(task.sourceId, nextDone).catch(() => {
+        enqueueAsanaSync(task.sourceId!, nextDone);
       });
     }
   }, [plannedTasks, scheduleBlocks, setPlannedTasks]);
