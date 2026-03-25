@@ -6,6 +6,7 @@ import { AnimatePresence, motion } from 'motion/react';
 import { cn } from './lib/utils';
 import { ThemeProvider } from './context/ThemeContext';
 import { AppProvider, useApp } from './context/AppContext';
+import { InkAssistantProvider, useInkAssistant } from './context/InkAssistantContext';
 import { DragOverlay } from './components/shared/DragOverlay';
 import { ErrorBoundary, RootFallback, ModeFallback } from './components/shared/ErrorBoundary';
 import { AtmosphereLayer } from './components/AtmosphereLayer';
@@ -19,8 +20,6 @@ const Settings = lazy(() => import('./components/chrome/Settings').then((m) => (
 const CommandPalette = lazy(() => import('./components/chrome/CommandPalette').then((m) => ({ default: m.CommandPalette })));
 const InkThread = lazy(() => import('./components/ink/Thread').then((m) => ({ default: m.InkThread })));
 const IntentionsView = lazy(() => import('./components/intentions/IntentionsView').then((m) => ({ default: m.IntentionsView })));
-
-const ASSISTANT_CLOSE_DELAY_MS = 140;
 
 function AppLayout() {
   const {
@@ -40,67 +39,19 @@ function AppLayout() {
     resetAppMode,
   } = useApp();
 
+  const {
+    assistantOpen,
+    assistantPinned,
+    closeAssistant,
+    setBriefingMode,
+  } = useInkAssistant();
+
   // --- Local UI state ---
   const [showSettings, setShowSettings] = useState(false);
   const [isEveningReflection, setIsEveningReflection] = useState(false);
   const [pendingDayReset, setPendingDayReset] = useState(false);
-  const [briefingSessionId, setBriefingSessionId] = useState(0);
-  const [briefingMode, setBriefingMode] = useState<'briefing' | 'chat'>('briefing');
-  const [assistantOpen, setAssistantOpen] = useState(false);
-  const [assistantPinned, setAssistantPinned] = useState(false);
-  const [inkStreaming, setInkStreaming] = useState(false);
 
   const autoBriefingCheckedRef = useRef(false);
-  const assistantCloseTimeoutRef = useRef<number | null>(null);
-
-  // --- Ink assistant helpers ---
-  const clearAssistantCloseTimeout = useCallback(() => {
-    if (assistantCloseTimeoutRef.current !== null) {
-      window.clearTimeout(assistantCloseTimeoutRef.current);
-      assistantCloseTimeoutRef.current = null;
-    }
-  }, []);
-
-  const closeAssistant = useCallback(() => {
-    clearAssistantCloseTimeout();
-    setAssistantPinned(false);
-    setAssistantOpen(false);
-  }, [clearAssistantCloseTimeout]);
-
-  const openAssistantPreview = useCallback(() => {
-    if (mode === 'briefing') return;
-    clearAssistantCloseTimeout();
-    setBriefingMode('chat');
-    setAssistantOpen(true);
-  }, [clearAssistantCloseTimeout, mode]);
-
-  const scheduleAssistantClose = useCallback(() => {
-    if (assistantPinned) return;
-    clearAssistantCloseTimeout();
-    assistantCloseTimeoutRef.current = window.setTimeout(() => {
-      setAssistantOpen(false);
-    }, ASSISTANT_CLOSE_DELAY_MS);
-  }, [assistantPinned, clearAssistantCloseTimeout]);
-
-  const togglePinnedAssistant = useCallback(() => {
-    if (assistantPinned) {
-      closeAssistant();
-      return;
-    }
-    if (mode === 'briefing') return;
-    clearAssistantCloseTimeout();
-    setBriefingMode('chat');
-    setAssistantOpen(true);
-    setAssistantPinned(true);
-  }, [assistantPinned, closeAssistant, clearAssistantCloseTimeout, mode]);
-
-  const openWeeklyPlanningAssistant = useCallback(() => {
-    clearAssistantCloseTimeout();
-    setBriefingMode('briefing');
-    setBriefingSessionId((n) => n + 1);
-    setAssistantOpen(true);
-    setAssistantPinned(true);
-  }, [clearAssistantCloseTimeout]);
 
   // --- Fullscreen Ink / briefing ---
   const openFullscreenInk = useCallback(() => {
@@ -108,13 +59,13 @@ function AppLayout() {
     const shouldRunBriefing = dayCommitInfo.state === 'briefing' && !dayCommitInfo.hadBlocks;
     setBriefingMode(shouldRunBriefing ? 'briefing' : 'chat');
     setIsEveningReflection(false);
-  }, [closeAssistant, dayCommitInfo.hadBlocks, dayCommitInfo.state]);
+  }, [closeAssistant, setBriefingMode, dayCommitInfo.hadBlocks, dayCommitInfo.state]);
 
   const openEveningReflection = useCallback(() => {
     closeAssistant();
     setBriefingMode('chat');
     setIsEveningReflection(true);
-  }, [closeAssistant]);
+  }, [closeAssistant, setBriefingMode]);
 
   // --- Auto-briefing check ---
   const checkAutoBriefing = useCallback(async (isCancelled: () => boolean) => {
@@ -129,7 +80,6 @@ function AppLayout() {
     if (!isCancelled() && settings.anthropic.configured && !dismissed) {
       openFullscreenInk();
     } else if (!isCancelled() && !settings.anthropic.configured) {
-      // No API key — skip briefing, go straight to planning
       completeBriefing();
     }
   }, [dayCommitInfo.state, dayCommitInfo.hadBlocks, openFullscreenInk, completeBriefing]);
@@ -157,7 +107,6 @@ function AppLayout() {
     completeBriefing();
     window.api.store.set(`briefing.dismissed.${today}`, true);
 
-    // Generate and save evening reflection from today's conversation
     if (wasEvening) {
       void window.api.chat.load(today).then((msgs) => {
         if (msgs.length < 2) return;
@@ -221,9 +170,6 @@ function AppLayout() {
     return () => document.removeEventListener('keydown', handleViewHotkeys);
   }, [setView]);
 
-  // Cleanup timeout on unmount
-  useEffect(() => () => clearAssistantCloseTimeout(), [clearAssistantCloseTimeout]);
-
   // --- Native menu bar events ---
   useEffect(() => {
     const cleanups = [
@@ -256,13 +202,10 @@ function AppLayout() {
       <div className="drag-region" />
       {!showInkOverlay && <AtmosphereLayer />}
 
-      {/* ═══ GLOBAL SIDEBAR (fixed overlay, always rendered except FocusMode) ═══ */}
       {mode !== 'focus' && (
         <Sidebar onSettingsClick={() => setShowSettings(true)} />
       )}
 
-      {/* ═══ MODE ROUTER ═══ */}
-      {/* Content offset: ml-12 accounts for the 48px fixed sidebar (hidden in FocusMode) */}
       <div className={cn('flex flex-1 overflow-hidden', mode !== 'focus' && 'ml-12')}>
         <AnimatePresence mode="wait">
           <motion.div
@@ -276,18 +219,7 @@ function AppLayout() {
             {view === 'intentions' ? (
               <ErrorBoundary resetKeys={[mode, view]} onReset={resetAppMode} fallback={modeFallback}>
                 <Suspense fallback={null}>
-                  <IntentionsView
-                    assistantOpen={assistantOpen}
-                    assistantPinned={assistantPinned}
-                    onAssistantHover={openAssistantPreview}
-                    onAssistantLeave={scheduleAssistantClose}
-                    onToggleAssistant={togglePinnedAssistant}
-                    onPlanWeekWithInk={openWeeklyPlanningAssistant}
-                    inkStreaming={inkStreaming}
-                    briefingSessionId={briefingSessionId}
-                    onNewChat={() => setBriefingSessionId((n) => n + 1)}
-                    onStreamingChange={setInkStreaming}
-                  />
+                  <IntentionsView />
                 </Suspense>
               </ErrorBoundary>
             ) : mode === 'briefing' ? (
@@ -295,10 +227,6 @@ function AppLayout() {
                 <BriefingMode
                   onComplete={closeBriefing}
                   isEvening={isEveningReflection}
-                  briefingSessionId={briefingSessionId}
-                  onNewChat={() => setBriefingSessionId((n) => n + 1)}
-                  onStreamingChange={setInkStreaming}
-                  briefingMode={briefingMode}
                 />
               </ErrorBoundary>
             ) : mode === 'focus' && focusTaskId ? (
@@ -311,15 +239,6 @@ function AppLayout() {
                   onStartDay={startDay}
                   onOpenInk={openFullscreenInk}
                   onEndDay={() => { setPendingDayReset(true); openEveningReflection(); }}
-                  assistantOpen={assistantOpen}
-                  assistantPinned={assistantPinned}
-                  onAssistantHover={openAssistantPreview}
-                  onAssistantLeave={scheduleAssistantClose}
-                  onToggleAssistant={togglePinnedAssistant}
-                  inkStreaming={inkStreaming}
-                  briefingSessionId={briefingSessionId}
-                  onNewChat={() => setBriefingSessionId((n) => n + 1)}
-                  onStreamingChange={setInkStreaming}
                 />
               </ErrorBoundary>
             ) : (
@@ -329,15 +248,6 @@ function AppLayout() {
                   onOpenInk={openFullscreenInk}
                   onOpenInbox={openInbox}
                   onEndDay={() => { setPendingDayReset(true); openEveningReflection(); }}
-                  assistantOpen={assistantOpen}
-                  assistantPinned={assistantPinned}
-                  onAssistantHover={openAssistantPreview}
-                  onAssistantLeave={scheduleAssistantClose}
-                  onToggleAssistant={togglePinnedAssistant}
-                  inkStreaming={inkStreaming}
-                  briefingSessionId={briefingSessionId}
-                  onNewChat={() => setBriefingSessionId((n) => n + 1)}
-                  onStreamingChange={setInkStreaming}
                 />
               </ErrorBoundary>
             )}
@@ -345,7 +255,6 @@ function AppLayout() {
         </AnimatePresence>
       </div>
 
-      {/* ═══ GLOBAL OVERLAYS ═══ */}
       {showSettings && (
         <Suspense fallback={null}>
           <Settings onClose={() => setShowSettings(false)} />
@@ -362,14 +271,23 @@ function AppLayout() {
   );
 }
 
+function AppLayoutWithInk() {
+  const { mode } = useApp();
+  return (
+    <InkAssistantProvider mode={mode}>
+      <ErrorBoundary fallback={({ error }) => <RootFallback error={error} />}>
+        <AppLayout />
+      </ErrorBoundary>
+    </InkAssistantProvider>
+  );
+}
+
 export default function App() {
   return (
     <ThemeProvider>
       <AppProvider>
         <DndProvider backend={HTML5Backend}>
-          <ErrorBoundary fallback={({ error }) => <RootFallback error={error} />}>
-            <AppLayout />
-          </ErrorBoundary>
+          <AppLayoutWithInk />
         </DndProvider>
       </AppProvider>
     </ThemeProvider>
