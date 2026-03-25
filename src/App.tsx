@@ -15,6 +15,7 @@ import { BriefingMode } from './modes/BriefingMode';
 import { PlanningMode } from './modes/PlanningMode';
 import { ExecutingMode } from './modes/ExecutingMode';
 import { FocusMode } from './modes/FocusMode';
+import { Skeleton } from './components/shared/Skeleton';
 
 const Settings = lazy(() => import('./components/chrome/Settings').then((m) => ({ default: m.Settings })));
 const CommandPalette = lazy(() => import('./components/chrome/CommandPalette').then((m) => ({ default: m.CommandPalette })));
@@ -123,7 +124,7 @@ function AppLayout() {
           >
             {view === 'intentions' ? (
               <ErrorBoundary resetKeys={[mode, view]} onReset={resetAppMode} fallback={modeFallback}>
-                <Suspense fallback={null}>
+                <Suspense fallback={<Skeleton />}>
                   <IntentionsView />
                 </Suspense>
               </ErrorBoundary>
@@ -161,7 +162,7 @@ function AppLayout() {
       </div>
 
       {showSettings && (
-        <Suspense fallback={null}>
+        <Suspense fallback={<Skeleton variant="inline" />}>
           <Settings onClose={() => setShowSettings(false)} />
         </Suspense>
       )}
