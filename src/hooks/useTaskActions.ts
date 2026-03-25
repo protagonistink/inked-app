@@ -1,6 +1,7 @@
 import { useCallback, type Dispatch, type SetStateAction } from 'react';
 import type { DailyPlan, PlannedTask, ScheduleBlock, WeeklyGoal } from '@/types';
 import { currentWeekStart } from '@/lib/planner';
+import { withTimeout } from '@/lib/ipc';
 
 interface TaskActionsOptions {
   weeklyGoals: WeeklyGoal[];
@@ -30,7 +31,7 @@ export function useTaskActions({
     if (!linkedBlock) return;
 
     if (linkedBlock.eventId) {
-      const result = await window.api.gcal.deleteEvent(linkedBlock.eventId, linkedBlock.calendarId);
+      const result = await withTimeout(window.api.gcal.deleteEvent(linkedBlock.eventId, linkedBlock.calendarId), 'gcal.deleteEvent');
       if (!result.success) {
         throw new Error(result.error || 'Failed to remove linked calendar event');
       }
@@ -264,7 +265,7 @@ export function useTaskActions({
     if (nextDone && linkedBlock) {
       if (linkedBlock.eventId) {
         try {
-          const result = await window.api.gcal.deleteEvent(linkedBlock.eventId, linkedBlock.calendarId);
+          const result = await withTimeout(window.api.gcal.deleteEvent(linkedBlock.eventId, linkedBlock.calendarId), 'gcal.deleteEvent');
           if (!result.success) {
             console.warn('Failed to delete linked calendar event on completion:', result.error);
           }

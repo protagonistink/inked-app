@@ -1,6 +1,7 @@
 import { useCallback, type Dispatch, type SetStateAction } from 'react';
 import type { AsanaTask, DailyRitual, GCalEvent, PlannedTask, ScheduleBlock } from '@/types';
 import { asPlannedTask, eventToBlock, mergeScheduleBlocksWithRituals } from '@/lib/planner';
+import { withTimeout } from '@/lib/ipc';
 
 interface SyncStatus {
   asana: string | null;
@@ -31,20 +32,46 @@ export function useExternalPlannerSync({
       .filter((block): block is ScheduleBlock => block !== null);
 
     setScheduleBlocks((prev) => {
-      // Preserve nestedTaskIds from existing blocks
+      // Preserve local metadata from existing blocks across calendar hydration.
       const nestingMap = new Map<string, string[]>();
+      const taskByBlockId = new Map<string, string | undefined>();
+      const goalByBlockId = new Map<string, string | null>();
+      const goalByTaskId = new Map<string, string | null>();
       for (const block of prev) {
         if (block.nestedTaskIds?.length) {
           nestingMap.set(block.id, block.nestedTaskIds);
+        }
+        taskByBlockId.set(block.id, block.linkedTaskId);
+        if (block.linkedGoalId !== undefined) {
+          goalByBlockId.set(block.id, block.linkedGoalId);
+        }
+        if (block.linkedTaskId && block.linkedGoalId !== undefined) {
+          goalByTaskId.set(block.linkedTaskId, block.linkedGoalId);
         }
       }
 
       const merged = mergeScheduleBlocksWithRituals(eventBlocks, rituals, workdayStart, viewDate);
 
-      // Re-apply nesting
+      // Re-apply nesting and any cached goal link that the fresh task payload
+      // failed to provide during this refresh.
       return merged.map((block) => {
         const nested = nestingMap.get(block.id);
-        return nested ? { ...block, nestedTaskIds: nested } : block;
+        const preservedTaskId = block.linkedTaskId ?? taskByBlockId.get(block.id);
+        const preservedGoalId = block.linkedGoalId
+          ?? goalByBlockId.get(block.id)
+          ?? (preservedTaskId ? goalByTaskId.get(preservedTaskId) : null)
+          ?? null;
+
+        if (!nested && preservedTaskId === block.linkedTaskId && preservedGoalId === block.linkedGoalId) {
+          return block;
+        }
+
+        return {
+          ...block,
+          linkedTaskId: preservedTaskId,
+          linkedGoalId: preservedGoalId,
+          ...(nested ? { nestedTaskIds: nested } : {}),
+        };
       });
     });
   }, [rituals, setScheduleBlocks, viewDate, workdayStart]);
@@ -53,8 +80,8 @@ export function useExternalPlannerSync({
     setSyncStatus({ asana: null, gcal: null, loading: true });
 
     const [asanaResult, gcalResult] = await Promise.allSettled([
-      window.api.asana.getTasks({ daysAhead: 7, limit: 50 }),
-      window.api.gcal.getEvents(viewDate),
+      withTimeout(window.api.asana.getTasks({ daysAhead: 7, limit: 50 }), 'asana.getTasks', 15_000),
+      withTimeout(window.api.gcal.getEvents(viewDate), 'gcal.getEvents', 15_000),
     ]);
 
     // Capture the merged task list from the updater so we can pass it to

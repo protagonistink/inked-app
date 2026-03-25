@@ -1,6 +1,7 @@
 import { useCallback, type Dispatch, type SetStateAction } from 'react';
 import type { DailyPlan, PlannedTask, ScheduleBlock } from '@/types';
 import { buildFocusEventPayload, planFocusCascade, sortBlocksByStart } from '@/lib/planner';
+import { withTimeout } from '@/lib/ipc';
 
 interface ScheduleManagerOptions {
   plannedTasks: PlannedTask[];
@@ -59,6 +60,7 @@ export function useScheduleManager({
       kind: 'focus',
       readOnly: false,
       linkedTaskId: taskId,
+      linkedGoalId: task?.weeklyGoalId ?? null,
       source: 'local',
     };
 
@@ -93,10 +95,10 @@ export function useScheduleManager({
 
     try {
       if (eventId) {
-        const result = await window.api.gcal.updateEvent(eventId, eventPayload, calendarId);
+        const result = await withTimeout(window.api.gcal.updateEvent(eventId, eventPayload, calendarId), 'gcal.updateEvent');
         if (!result.success) throw new Error(result.error || 'Failed to update calendar event');
       } else {
-        const result = await window.api.gcal.createEvent(eventPayload);
+        const result = await withTimeout(window.api.gcal.createEvent(eventPayload), 'gcal.createEvent');
         if (!result.success || !result.data) throw new Error(result.error || 'Failed to create calendar event');
         eventId = result.data.id;
         calendarId = result.data.calendarId;
@@ -136,7 +138,7 @@ export function useScheduleManager({
                 block.durationMins,
                 commitDate
               );
-              return window.api.gcal.updateEvent(block.eventId!, movedPayload, block.calendarId);
+              return withTimeout(window.api.gcal.updateEvent(block.eventId!, movedPayload, block.calendarId), 'gcal.updateEvent');
             })
         );
       }
@@ -179,7 +181,7 @@ export function useScheduleManager({
 
     if (!block.readOnly && block.eventId) {
       try {
-        const result = await window.api.gcal.deleteEvent(block.eventId, block.calendarId);
+        const result = await withTimeout(window.api.gcal.deleteEvent(block.eventId, block.calendarId), 'gcal.deleteEvent');
         if (!result.success) console.warn('Failed to delete GCal event on remove:', result.error);
       } catch (err) {
         console.warn('GCal delete error on remove (local state will still be cleaned up):', err);
@@ -206,7 +208,7 @@ export function useScheduleManager({
     if (ownBlock) {
       if (ownBlock.eventId) {
         try {
-          await window.api.gcal.deleteEvent(ownBlock.eventId, ownBlock.calendarId);
+          await withTimeout(window.api.gcal.deleteEvent(ownBlock.eventId, ownBlock.calendarId), 'gcal.deleteEvent');
         } catch (err) {
           console.warn('Failed to delete GCal event when nesting:', err);
         }
@@ -248,7 +250,7 @@ export function useScheduleManager({
 
     if (block.eventId) {
       try {
-        const result = await window.api.gcal.deleteEvent(block.eventId, block.calendarId);
+        const result = await withTimeout(window.api.gcal.deleteEvent(block.eventId, block.calendarId), 'gcal.deleteEvent');
         if (!result.success) console.warn('Failed to delete GCal event on unschedule:', result.error);
       } catch (err) {
         console.warn('GCal delete error on unschedule (local state will still be cleaned up):', err);

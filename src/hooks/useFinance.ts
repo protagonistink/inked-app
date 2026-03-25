@@ -1,5 +1,6 @@
 import { useState, useCallback, useEffect } from 'react';
 import type { EngineState } from '../../engine/types';
+import { withTimeout } from '@/lib/ipc';
 
 interface ActionItem {
   id: string;
@@ -39,8 +40,8 @@ export function useFinance() {
     setLoading(true);
     try {
       const [result, accts] = await Promise.all([
-        window.api.finance.getState(),
-        window.api.finance.getAccounts().catch(() => []),
+        withTimeout(window.api.finance.getState(), 'finance.getState'),
+        withTimeout(window.api.finance.getAccounts(), 'finance.getAccounts').catch(() => []),
       ]);
       processResult(result);
       if (Array.isArray(accts)) setAccounts(accts);
@@ -54,10 +55,10 @@ export function useFinance() {
   const refresh = useCallback(async () => {
     setLoading(true);
     try {
-      const result = await window.api.finance.refresh();
+      const result = await withTimeout(window.api.finance.refresh(), 'finance.refresh', 15_000);
       processResult(result);
       // Also refresh accounts after sync
-      const accts = await window.api.finance.getAccounts().catch(() => []);
+      const accts = await withTimeout(window.api.finance.getAccounts(), 'finance.getAccounts').catch(() => []);
       if (Array.isArray(accts)) setAccounts(accts);
     } catch (error) {
       console.error('Failed to refresh finance state:', error);
