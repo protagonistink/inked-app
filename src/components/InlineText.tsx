@@ -2,7 +2,9 @@ import { useEffect, useRef, useState } from 'react';
 import { cn } from '@/lib/utils';
 
 /**
- * Inline editable text field — displays as plain text, double-click to edit.
+ * Inline editable text field — displays as plain text, double-click or
+ * press Enter to edit. Accessible: announced as a button with current
+ * value, screen readers hear state transitions.
  */
 export function InlineText({
   value,
@@ -49,7 +51,22 @@ export function InlineText({
     }
   };
 
+  const startEditing = () => setEditing(true);
+
+  const handleDisplayKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      startEditing();
+    }
+  };
+
+  const fieldLabel = placeholder || 'Editable text';
+
   if (editing) {
+    const sharedProps = {
+      'aria-label': `Editing ${fieldLabel}`,
+    };
+
     if (multiline) {
       return (
         <textarea
@@ -64,6 +81,7 @@ export function InlineText({
             'w-full resize-none bg-transparent border-none outline-none placeholder:text-text-muted/30',
             className
           )}
+          {...sharedProps}
         />
       );
     }
@@ -79,6 +97,7 @@ export function InlineText({
           'w-full bg-transparent border-none outline-none placeholder:text-text-muted/30',
           className
         )}
+        {...sharedProps}
       />
     );
   }
@@ -87,7 +106,11 @@ export function InlineText({
   if (!value) {
     return (
       <span
-        onDoubleClick={() => setEditing(true)}
+        role="button"
+        tabIndex={0}
+        aria-label={`${fieldLabel} — empty, activate to edit`}
+        onDoubleClick={startEditing}
+        onKeyDown={handleDisplayKeyDown}
         className={cn('cursor-text block', className)}
       >
         <span className="text-white/0 group-hover:text-white/20 italic transition-colors duration-300">
@@ -99,7 +122,11 @@ export function InlineText({
 
   return (
     <span
-      onDoubleClick={() => setEditing(true)}
+      role="button"
+      tabIndex={0}
+      aria-label={`${fieldLabel}: ${value} — activate to edit`}
+      onDoubleClick={startEditing}
+      onKeyDown={handleDisplayKeyDown}
       className={cn('cursor-text', className)}
     >
       {value}

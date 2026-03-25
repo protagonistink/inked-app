@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useCallback, useRef, useState, useEffect } from 'react';
 import { X, Save } from 'lucide-react';
 import { useTheme } from '@/context/ThemeContext';
 import type { CalendarListEntry } from '@/types';
@@ -157,6 +157,37 @@ export function Settings({ onClose }: SettingsProps) {
     });
   }
 
+  const tabListRef = useRef<HTMLUListElement>(null);
+
+  const handleTabKeyDown = useCallback((e: React.KeyboardEvent) => {
+    const tabs = NAV.map((n) => n.id);
+    const currentIndex = tabs.indexOf(tab);
+    let nextIndex = currentIndex;
+
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      nextIndex = (currentIndex + 1) % tabs.length;
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      nextIndex = (currentIndex - 1 + tabs.length) % tabs.length;
+    } else if (e.key === 'Home') {
+      e.preventDefault();
+      nextIndex = 0;
+    } else if (e.key === 'End') {
+      e.preventDefault();
+      nextIndex = tabs.length - 1;
+    } else {
+      return;
+    }
+
+    setTab(tabs[nextIndex]);
+    // Move focus to the newly selected tab
+    const nextButton = tabListRef.current?.querySelector<HTMLButtonElement>(
+      `#settings-tab-${tabs[nextIndex]}`
+    );
+    nextButton?.focus();
+  }, [tab]);
+
   async function handleGoogleAuth() {
     setAuthenticating(true);
     await window.api.settings.save({ gcalClientId, ...(gcalClientSecretDirty ? { gcalClientSecret } : {}) });
@@ -221,7 +252,7 @@ export function Settings({ onClose }: SettingsProps) {
           </div>
 
           <nav className="flex-1 px-8 py-4 overflow-y-auto" aria-label="Settings sections">
-            <ul role="tablist" aria-orientation="vertical" className="flex flex-col gap-2">
+            <ul ref={tabListRef} role="tablist" aria-orientation="vertical" className="flex flex-col gap-2" onKeyDown={handleTabKeyDown}>
               {NAV.map((item) => {
                 const isActive = tab === item.id;
                 return (
@@ -231,8 +262,9 @@ export function Settings({ onClose }: SettingsProps) {
                       aria-selected={isActive}
                       aria-controls={`settings-panel-${item.id}`}
                       id={`settings-tab-${item.id}`}
+                      tabIndex={isActive ? 0 : -1}
                       onClick={() => setTab(item.id)}
-                      className="w-full group flex items-baseline gap-6 px-4 py-4 text-left focus:outline-none"
+                      className="w-full group flex items-baseline gap-6 px-4 py-4 text-left focus:outline-none focus-visible:ring-1 focus-visible:ring-accent-warm/50 focus-visible:rounded-md"
                     >
                       <span className={`text-[10px] font-mono mt-1.5 transition-colors duration-500 ${
                         isActive ? 'text-accent-warm' : 'text-white/20 group-hover:text-white/40'
