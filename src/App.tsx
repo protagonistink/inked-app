@@ -112,7 +112,7 @@ function AppLayout() {
         <Sidebar onSettingsClick={() => setShowSettings(true)} />
       )}
 
-      <div className={cn('flex flex-1 overflow-hidden', mode !== 'focus' && 'ml-12')}>
+      <main aria-live="polite" className={cn('flex flex-1 overflow-hidden', mode !== 'focus' && 'ml-12')}>
         <AnimatePresence mode="wait">
           <motion.div
             key={`${mode}-${view}`}
@@ -159,7 +159,7 @@ function AppLayout() {
             )}
           </motion.div>
         </AnimatePresence>
-      </div>
+      </main>
 
       {showSettings && (
         <Suspense fallback={<Skeleton variant="inline" />}>

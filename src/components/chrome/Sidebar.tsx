@@ -31,6 +31,7 @@ export function Sidebar({ onSettingsClick }: SidebarProps) {
     <>
       {/* Collapsed strip — always visible */}
       <aside
+        aria-label="Main navigation"
         className="fixed left-0 top-0 bottom-0 z-50 w-12 flex flex-col items-center bg-bg-elevated border-r border-border-subtle"
         style={{ WebkitAppRegion: 'drag' } as React.CSSProperties}
       >
@@ -39,6 +40,8 @@ export function Sidebar({ onSettingsClick }: SidebarProps) {
           onClick={() => setOpen((v) => !v)}
           className="no-drag mt-[40px] mb-4 p-2 rounded-md text-text-muted/60 hover:text-text-primary hover:bg-surface/50 transition-colors"
           title={open ? 'Close menu' : 'Open menu'}
+          aria-label={open ? 'Close menu' : 'Open menu'}
+          aria-expanded={open}
         >
           {open ? <X className="w-[18px] h-[18px] stroke-[1.5]" /> : <Menu className="w-[18px] h-[18px] stroke-[1.5]" />}
         </button>
@@ -50,6 +53,8 @@ export function Sidebar({ onSettingsClick }: SidebarProps) {
               key={label}
               onClick={onClick}
               title={label}
+              aria-label={label}
+              aria-current={active ? 'page' : undefined}
               className={cn(
                 'no-drag relative flex items-center justify-center rounded-md p-2 transition-colors',
                 active
@@ -70,6 +75,7 @@ export function Sidebar({ onSettingsClick }: SidebarProps) {
           <button
             onClick={onSettingsClick}
             title="Settings"
+            aria-label="Settings"
             className="no-drag flex items-center justify-center rounded-md p-2 text-text-muted/60 hover:text-text-primary hover:bg-bg-card/60 transition-colors"
           >
             <Settings className="w-[18px] h-[18px] stroke-[1.5]" />
@@ -84,6 +90,7 @@ export function Sidebar({ onSettingsClick }: SidebarProps) {
           <div
             className="fixed inset-0 z-[55] bg-black/40"
             onClick={() => setOpen(false)}
+            aria-hidden="true"
           />
 
           {/* Panel */}
@@ -94,7 +101,7 @@ export function Sidebar({ onSettingsClick }: SidebarProps) {
             </div>
 
             {/* Nav */}
-            <nav className="flex flex-col gap-1 px-3 flex-1">
+            <nav aria-label="Main navigation" className="flex flex-col gap-1 px-3 flex-1">
               {navItems.map(({ icon: Icon, label, active, onClick }) => (
                 <button
                   key={label}
