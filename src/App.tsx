@@ -11,7 +11,11 @@ import { AtmosphereLayer } from './components/AtmosphereLayer';
 import { Sidebar } from './components/chrome/Sidebar';
 import { Settings } from './components/chrome/Settings';
 import { useBriefingLifecycle } from './hooks/useBriefingLifecycle';
+import { useCaptures } from './hooks/useCaptures';
 import { Skeleton } from './components/shared/Skeleton';
+
+const CaptureOverlay = lazy(() => import('./components/capture/CaptureOverlay').then((m) => ({ default: m.CaptureOverlay })));
+const CapturePopover = lazy(() => import('./components/capture/CapturePopover').then((m) => ({ default: m.CapturePopover })));
 
 const BriefingMode = lazy(() => import('./modes/BriefingMode').then((m) => ({ default: m.BriefingMode })));
 const PlanningMode = lazy(() => import('./modes/PlanningMode').then((m) => ({ default: m.PlanningMode })));
@@ -33,10 +37,30 @@ function AppLayout() {
   } = useAppShell();
   const { setViewDate } = usePlanner();
 
-  const { assistantOpen, assistantPinned, closeAssistant } = useInkAssistant();
+  const { assistantOpen, assistantPinned, closeAssistant, openInkChat } = useInkAssistant();
   const { isEveningReflection, openFullscreenInk, requestDayReset, closeBriefing } = useBriefingLifecycle();
 
   const [showSettings, setShowSettings] = useState(false);
+  const { captures, addCapture, removeCapture, refresh: refreshCaptures } = useCaptures();
+  const [captureOverlayOpen, setCaptureOverlayOpen] = useState(false);
+  const [capturePopoverOpen, setCapturePopoverOpen] = useState(false);
+
+  // Listen for global shortcut
+  useEffect(() => {
+    return window.api.capture.onOpenOverlay(() => setCaptureOverlayOpen(true));
+  }, []);
+
+  // Midnight purge
+  useEffect(() => {
+    const checkMidnight = setInterval(() => {
+      window.api.capture.purgeStale().then(() => refreshCaptures());
+    }, 60_000);
+    return () => clearInterval(checkMidnight);
+  }, [refreshCaptures]);
+
+  const openPlot = () => {
+    openFullscreenInk();
+  };
 
   // --- Escape key ---
   useEffect(() => {
@@ -53,7 +77,7 @@ function AppLayout() {
   // --- View hotkeys ---
   useEffect(() => {
     function handleViewHotkeys(e: KeyboardEvent) {
-      if (e.defaultPrevented || e.metaKey || e.ctrlKey || e.altKey) return;
+      if (e.defaultPrevented || e.altKey) return;
 
       const target = e.target as HTMLElement | null;
       if (
@@ -65,10 +89,20 @@ function AppLayout() {
         return;
       }
 
+      const isViewShortcut = e.metaKey || e.ctrlKey || (!e.metaKey && !e.ctrlKey);
+
+      if (!isViewShortcut) return;
+
       if (e.key === '1') {
+        e.preventDefault();
+        setViewDate(new Date());
         setView('flow');
       } else if (e.key === '2') {
+        e.preventDefault();
         setView('intentions');
+      } else if (e.key === '3') {
+        e.preventDefault();
+        openPlot();
       }
     }
 
@@ -81,12 +115,13 @@ function AppLayout() {
     const cleanups = [
       window.api.menu.onSetView((v) => setView(v as import('./types/appMode').View)),
       window.api.menu.onOpenSettings(() => setShowSettings(true)),
-      window.api.menu.onOpenInk(() => openFullscreenInk()),
+      window.api.menu.onOpenInk(() => openInkChat()),
+      window.api.menu.onOpenPlot(() => openPlot()),
       window.api.menu.onStartDay(() => startDay()),
       window.api.menu.onGoToday(() => setViewDate(new Date())),
     ];
     return () => cleanups.forEach((fn) => fn());
-  }, [setView, openFullscreenInk, startDay, setViewDate]);
+  }, [setView, openInkChat, openPlot, startDay, setViewDate]);
 
   const showInkOverlay = mode === 'briefing';
 
@@ -106,7 +141,12 @@ function AppLayout() {
       {!showInkOverlay && <AtmosphereLayer />}
 
       {mode !== 'focus' && (
-        <Sidebar onSettingsClick={() => setShowSettings(true)} />
+        <Sidebar
+          onSettingsClick={() => setShowSettings(true)}
+          onPlotClick={openPlot}
+          onCaptureClick={() => setCapturePopoverOpen(v => !v)}
+          captureCount={captures.length}
+        />
       )}
 
       <main aria-live="polite" className={cn('flex flex-1 overflow-hidden', mode !== 'focus' && 'ml-12')}>
@@ -163,8 +203,42 @@ function AppLayout() {
         <InkThread />
       </Suspense>
       <Suspense fallback={null}>
-        <CommandPalette onOpenSettings={() => setShowSettings(true)} onOpenInk={openFullscreenInk} />
+        <CommandPalette onOpenSettings={() => setShowSettings(true)} onOpenInk={openInkChat} onOpenPlot={openPlot} />
       </Suspense>
+
+      <Suspense fallback={null}>
+        <CaptureOverlay
+          open={captureOverlayOpen}
+          onClose={() => setCaptureOverlayOpen(false)}
+          onSubmit={async (text) => { await addCapture(text); }}
+        />
+      </Suspense>
+
+      {capturePopoverOpen && (
+        <>
+          <div
+            className="fixed inset-0 z-[55]"
+            onClick={() => setCapturePopoverOpen(false)}
+            aria-hidden="true"
+          />
+          <Suspense fallback={null}>
+            <CapturePopover
+              captures={captures}
+              onAdd={addCapture}
+              onMakeTask={async (entry) => {
+                // TODO: Task 7 — create Asana task
+                await removeCapture(entry.id);
+              }}
+              onSendToNotion={async (entry) => {
+                // TODO: Task 7 — send to Notion
+                await removeCapture(entry.id);
+              }}
+              onDismiss={removeCapture}
+              onClose={() => setCapturePopoverOpen(false)}
+            />
+          </Suspense>
+        </>
+      )}
     </div>
   );
 }

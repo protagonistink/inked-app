@@ -1,30 +1,41 @@
 import { useState } from 'react';
-import { CalendarDays, Menu, Target, Settings, X } from 'lucide-react';
+import { CalendarDays, Menu, PenLine, StickyNote, Target, Settings, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { useAppShell } from '@/context/AppContext';
+import { useAppShell, usePlanner } from '@/context/AppContext';
 import { InkedLogo } from '../shared/InkedLogo';
 import { OverlaySurface } from '../shared/OverlaySurface';
 
 interface SidebarProps {
   onSettingsClick: () => void;
+  onPlotClick: () => void;
+  onCaptureClick: () => void;
+  captureCount: number;
 }
 
-export function Sidebar({ onSettingsClick }: SidebarProps) {
+export function Sidebar({ onSettingsClick, onPlotClick, onCaptureClick, captureCount }: SidebarProps) {
   const [open, setOpen] = useState(false);
-  const { view, setView } = useAppShell();
+  const { mode, view, openPlanning } = useAppShell();
+  const { setViewDate } = usePlanner();
+  const inPlot = mode === 'briefing';
 
   const navItems = [
     {
+      icon: PenLine,
+      label: 'Plot',
+      active: inPlot,
+      onClick: () => { onPlotClick(); setOpen(false); },
+    },
+    {
       icon: CalendarDays,
       label: 'Flow',
-      active: view === 'flow',
-      onClick: () => { setView('flow'); setOpen(false); },
+      active: !inPlot && view === 'flow',
+      onClick: () => { setViewDate(new Date()); openPlanning('flow'); setOpen(false); },
     },
     {
       icon: Target,
       label: 'Intentions',
-      active: view === 'intentions',
-      onClick: () => { setView('intentions'); setOpen(false); },
+      active: !inPlot && view === 'intentions',
+      onClick: () => { openPlanning('intentions'); setOpen(false); },
     },
   ];
 
@@ -71,8 +82,25 @@ export function Sidebar({ onSettingsClick }: SidebarProps) {
           ))}
         </nav>
 
+        {/* Captures */}
+        <div className="mt-auto mb-1">
+          <button
+            onClick={onCaptureClick}
+            title="Quick Captures"
+            aria-label="Quick Captures"
+            className="no-drag relative flex items-center justify-center rounded-md p-2 text-text-secondary hover:text-accent-warm-hover hover:bg-bg-card/60 transition-colors"
+          >
+            <StickyNote className="w-[18px] h-[18px] stroke-[1.5]" />
+            {captureCount > 0 && (
+              <span className="absolute -top-0.5 -right-0.5 min-w-[16px] h-[16px] flex items-center justify-center rounded-full bg-accent-warm text-[10px] font-medium text-white leading-none px-1">
+                {captureCount}
+              </span>
+            )}
+          </button>
+        </div>
+
         {/* Settings — bottom */}
-        <div className="mt-auto mb-3">
+        <div className="mb-3">
           <button
             onClick={onSettingsClick}
             title="Settings"
