@@ -1,11 +1,12 @@
 import { ipcMain } from 'electron';
+import crypto from 'node:crypto';
 import { store } from './store';
-import type { ChatMessage as StoredChatMessage } from '../src/types';
+import type { ChatMessage as StoredChatMessage, ChatThread, ChatThreadSummary } from '../src/types';
 
-interface ChatHistoryEntry {
-  date: string; // YYYY-MM-DD
+interface LegacyChatHistoryEntry {
+  date: string;
   messages: StoredChatMessage[];
-  updatedAt: string; // ISO timestamp
+  updatedAt: string;
 }
 
 const STORE_KEY = 'chatHistory';
@@ -42,66 +43,142 @@ function sanitizeMessages(messages: StoredChatMessage[]): StoredChatMessage[] {
     }));
 }
 
-function readHistory(): ChatHistoryEntry[] {
-  const raw = store.get(STORE_KEY) as ChatHistoryEntry[] | undefined;
-  return Array.isArray(raw) ? raw : [];
+function summarizeThread(thread: ChatThread): ChatThreadSummary {
+  const previewSource = [...thread.messages].reverse().find((message) => message.content.trim().length > 0)?.content ?? '';
+  return {
+    id: thread.id,
+    date: thread.date,
+    mode: thread.mode,
+    title: thread.title,
+    preview: previewSource.trim().slice(0, 120),
+    messageCount: thread.messages.length,
+    createdAt: thread.createdAt,
+    updatedAt: thread.updatedAt,
+  };
 }
 
-function trimOldEntries(entries: ChatHistoryEntry[]): ChatHistoryEntry[] {
+function toThreadTitle(thread: ChatThread): string {
+  const firstUserMessage = thread.messages.find((message) => message.role === 'user' && message.content.trim().length > 0)?.content.trim();
+  if (firstUserMessage) return firstUserMessage.slice(0, 60);
+  return thread.title;
+}
+
+function isThread(value: unknown): value is ChatThread {
+  if (!value || typeof value !== 'object') return false;
+  const candidate = value as Partial<ChatThread>;
+  return typeof candidate.id === 'string'
+    && typeof candidate.date === 'string'
+    && (candidate.mode === 'briefing' || candidate.mode === 'chat' || candidate.mode === 'eod')
+    && typeof candidate.title === 'string'
+    && Array.isArray(candidate.messages)
+    && typeof candidate.createdAt === 'string'
+    && typeof candidate.updatedAt === 'string';
+}
+
+function migrateLegacyHistory(entries: LegacyChatHistoryEntry[]): ChatThread[] {
+  return entries.map((entry) => {
+    const createdAt = entry.updatedAt || new Date(`${entry.date}T09:00:00.000Z`).toISOString();
+    const thread: ChatThread = {
+      id: `thread-${crypto.randomUUID()}`,
+      date: entry.date,
+      mode: 'chat',
+      title: 'Conversation',
+      messages: sanitizeMessages(entry.messages),
+      createdAt,
+      updatedAt: entry.updatedAt || createdAt,
+    };
+    return { ...thread, title: toThreadTitle(thread) };
+  });
+}
+
+function readThreads(): ChatThread[] {
+  const raw = store.get(STORE_KEY) as unknown;
+  if (!Array.isArray(raw)) return [];
+  if (raw.every(isThread)) return raw.map((thread) => ({ ...thread, messages: sanitizeMessages(thread.messages) }));
+  const legacyEntries = raw as LegacyChatHistoryEntry[];
+  const migrated = migrateLegacyHistory(legacyEntries);
+  store.set(STORE_KEY, trimOldEntries(migrated));
+  return migrated;
+}
+
+function trimOldEntries(entries: ChatThread[]): ChatThread[] {
   const cutoff = new Date();
   cutoff.setDate(cutoff.getDate() - MAX_DAYS);
   const cutoffStr = cutoff.toISOString().split('T')[0];
   return entries.filter((e) => e.date >= cutoffStr);
 }
 
+function defaultThreadTitle(mode: ChatThread['mode']) {
+  if (mode === 'briefing') return 'Outline';
+  if (mode === 'eod') return 'Evening reflection';
+  return 'New conversation';
+}
+
 export function registerChatHistoryHandlers() {
-  // Load today's chat messages
-  ipcMain.handle('chat:load', (_event, date: string) => {
-    if (!isValidDate(date)) return [];
-    const entries = readHistory();
-    const entry = entries.find((e) => e.date === date);
-    return entry?.messages ?? [];
+  ipcMain.handle('chat:list', () => {
+    return readThreads()
+      .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
+      .map(summarizeThread);
   });
 
-  // Save chat messages for a given date
-  ipcMain.handle('chat:save', (_event, date: string, messages: StoredChatMessage[]) => {
-    if (!isValidDate(date) || !Array.isArray(messages)) {
-      throw new Error('Invalid chat history payload');
-    }
-    const entries = readHistory();
-    const existingIndex = entries.findIndex((e) => e.date === date);
+  ipcMain.handle('chat:load-thread', (_event, threadId: string) => {
+    const thread = readThreads().find((entry) => entry.id === threadId);
+    return thread ?? null;
+  });
 
-    const newEntry: ChatHistoryEntry = {
-      date,
+  ipcMain.handle('chat:create-thread', (_event, params: { date: string; mode: ChatThread['mode']; seedTitle?: string }) => {
+    if (!isValidDate(params.date)) {
+      throw new Error('Invalid chat thread payload');
+    }
+    const entries = readThreads();
+    const now = new Date().toISOString();
+    const thread: ChatThread = {
+      id: `thread-${crypto.randomUUID()}`,
+      date: params.date,
+      mode: params.mode,
+      title: (params.seedTitle?.trim() || defaultThreadTitle(params.mode)).slice(0, 80),
+      messages: [],
+      createdAt: now,
+      updatedAt: now,
+    };
+    store.set(STORE_KEY, trimOldEntries([thread, ...entries]));
+    return thread;
+  });
+
+  ipcMain.handle('chat:save-thread', (_event, threadId: string, messages: StoredChatMessage[]) => {
+    if (!threadId || !Array.isArray(messages)) {
+      throw new Error('Invalid chat thread payload');
+    }
+    const entries = readThreads();
+    const existingIndex = entries.findIndex((entry) => entry.id === threadId);
+    if (existingIndex < 0) return null;
+
+    const existing = entries[existingIndex];
+    const updatedThread: ChatThread = {
+      ...existing,
       messages: sanitizeMessages(messages),
       updatedAt: new Date().toISOString(),
     };
-
-    if (existingIndex >= 0) {
-      entries[existingIndex] = newEntry;
-    } else {
-      entries.push(newEntry);
-    }
+    updatedThread.title = toThreadTitle(updatedThread).slice(0, 80);
+    entries[existingIndex] = updatedThread;
 
     store.set(STORE_KEY, trimOldEntries(entries));
+    return summarizeThread(updatedThread);
+  });
+
+  ipcMain.handle('chat:delete-thread', (_event, threadId: string) => {
+    if (!threadId) return true;
+    const entries = readThreads();
+    store.set(STORE_KEY, entries.filter((entry) => entry.id !== threadId));
     return true;
   });
 
-  // Clear chat history for a given date
-  ipcMain.handle('chat:clear', (_event, date: string) => {
-    if (!isValidDate(date)) return true;
-    const entries = readHistory();
-    store.set(STORE_KEY, entries.filter((e) => e.date !== date));
-    return true;
-  });
-
-  // Clear all chat history except today's date
   ipcMain.handle('chat:clearOld', (_event, today: string) => {
     if (!isValidDate(today)) {
       throw new Error('Invalid chat history date');
     }
-    const entries = readHistory();
-    store.set(STORE_KEY, entries.filter((e) => e.date === today));
+    const entries = readThreads();
+    store.set(STORE_KEY, trimOldEntries(entries));
     return true;
   });
 }

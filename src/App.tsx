@@ -103,6 +103,9 @@ function AppLayout() {
       } else if (e.key === '3') {
         e.preventDefault();
         openPlot();
+      } else if (e.key === '0') {
+        e.preventDefault();
+        setCapturePopoverOpen((v) => !v);
       }
     }
 

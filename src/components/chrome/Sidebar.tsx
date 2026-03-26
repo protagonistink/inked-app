@@ -92,9 +92,7 @@ export function Sidebar({ onSettingsClick, onPlotClick, onCaptureClick, captureC
           >
             <StickyNote className="w-[18px] h-[18px] stroke-[1.5]" />
             {captureCount > 0 && (
-              <span className="absolute -top-0.5 -right-0.5 min-w-[16px] h-[16px] flex items-center justify-center rounded-full bg-accent-warm text-[10px] font-medium text-white leading-none px-1">
-                {captureCount}
-              </span>
+              <span className="absolute top-0.5 right-0.5 w-2 h-2 rounded-full bg-red-500" />
             )}
           </button>
         </div>

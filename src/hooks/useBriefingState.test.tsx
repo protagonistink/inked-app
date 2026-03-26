@@ -30,6 +30,17 @@ vi.mock('@/context/AppContext', () => ({
   usePlanner: () => mockPlanner,
 }));
 
+const mockInkAssistant = {
+  activeThreadId: null as string | null,
+  setActiveThreadId: vi.fn((threadId: string | null) => {
+    mockInkAssistant.activeThreadId = threadId;
+  }),
+};
+
+vi.mock('@/context/InkAssistantContext', () => ({
+  useInkAssistant: () => mockInkAssistant,
+}));
+
 // Capture the onAssistantMessage callback so tests can simulate streaming completion.
 // Use an object ref so the latest callback is always accessible regardless of render timing.
 const streamMock = {
@@ -75,6 +86,8 @@ describe('useBriefingState', () => {
     mockPlanner.weeklyGoals = [];
     mockPlanner.dailyPlan = { date: '2026-03-24', committedTaskIds: [], ritualIds: [] };
     mockPlanner.viewDate = new Date('2026-03-24T10:00:00');
+    mockInkAssistant.activeThreadId = null;
+    mockInkAssistant.setActiveThreadId.mockClear();
   });
 
   afterEach(() => {
@@ -227,9 +240,9 @@ describe('useBriefingState', () => {
     expect(result.current.state.inputValue).toBe('');
   });
 
-  // --- clearPersistedConversation ---
+  // --- startNewThread ---
 
-  it('resets all state and clears persisted chat', async () => {
+  it('resets message state and creates a new thread', async () => {
     const { result } = renderBriefing();
 
     // Build up some state
@@ -244,13 +257,13 @@ describe('useBriefingState', () => {
     expect(result.current.state.phase).toBe('briefing');
 
     await act(async () => {
-      await result.current.actions.clearPersistedConversation();
+      await result.current.actions.startNewThread();
     });
 
     expect(result.current.state.messages).toEqual([]);
     expect(result.current.state.phase).toBe('idle');
     expect(result.current.state.inputValue).toBe('');
-    expect(window.api.chat.clear).toHaveBeenCalled();
+    expect(window.api.chat.createThread).toHaveBeenCalled();
   });
 
   // --- Persistence ---
@@ -263,13 +276,14 @@ describe('useBriefingState', () => {
     });
 
     // The persistence effect runs after messages update
-    expect(window.api.chat.save).toHaveBeenCalledWith(
-      '2026-03-24',
+    expect(window.api.chat.createThread).toHaveBeenCalled();
+    expect(window.api.chat.saveThread).toHaveBeenCalledWith(
+      'thread-1',
       [{ role: 'user', content: 'Go' }],
     );
   });
 
-  it('does not persist messages for chat mode', async () => {
+  it('creates a fresh thread for chat mode too', async () => {
     const { result } = renderBriefing({ mode: 'chat', variant: 'fullscreen' });
 
     await act(async () => {
@@ -281,10 +295,11 @@ describe('useBriefingState', () => {
       await vi.advanceTimersByTimeAsync(100);
     });
 
-    expect(window.api.chat.save).not.toHaveBeenCalled();
+    expect(window.api.chat.createThread).toHaveBeenCalled();
+    expect(window.api.chat.saveThread).toHaveBeenCalled();
   });
 
-  it('does not persist messages for overlay variant', async () => {
+  it('creates a fresh thread for overlay variant without loading old ones', async () => {
     const { result } = renderBriefing({ mode: 'briefing', variant: 'overlay' });
 
     await act(async () => {
@@ -295,7 +310,8 @@ describe('useBriefingState', () => {
       await vi.advanceTimersByTimeAsync(100);
     });
 
-    expect(window.api.chat.save).not.toHaveBeenCalled();
+    expect(window.api.chat.loadThread).not.toHaveBeenCalled();
+    expect(window.api.chat.createThread).toHaveBeenCalled();
   });
 
   // --- promptInkMode ---

@@ -1,6 +1,6 @@
 import { useCallback, type Dispatch, type SetStateAction } from 'react';
 import type { AsanaTask, DailyRitual, GCalEvent, PlannedTask, ScheduleBlock } from '@/types';
-import { asPlannedTask, eventToBlock, mergeScheduleBlocksWithRituals } from '@/lib/planner';
+import { asPlannedTask, eventToBlock } from '@/lib/planner';
 import { withTimeout } from '@/lib/ipc';
 import { flushAsanaQueue } from '@/lib/asanaRetryQueue';
 
@@ -51,10 +51,10 @@ export function useExternalPlannerSync({
         }
       }
 
-      const merged = mergeScheduleBlocksWithRituals(eventBlocks, rituals, workdayStart, viewDate);
+      const merged = eventBlocks;
 
-      // Re-apply nesting and any cached goal link that the fresh task payload
-      // failed to provide during this refresh.
+      // Re-apply nesting, cached goal links, and readOnly status that the
+      // fresh task payload failed to provide during this refresh.
       return merged.map((block) => {
         const nested = nestingMap.get(block.id);
         const preservedTaskId = block.linkedTaskId ?? taskByBlockId.get(block.id);
@@ -63,7 +63,10 @@ export function useExternalPlannerSync({
           ?? (preservedTaskId ? goalByTaskId.get(preservedTaskId) : null)
           ?? null;
 
-        if (!nested && preservedTaskId === block.linkedTaskId && preservedGoalId === block.linkedGoalId) {
+        // If the block has a linked task, it's a focus block and should be draggable
+        const readOnly = preservedTaskId ? false : block.readOnly;
+
+        if (!nested && preservedTaskId === block.linkedTaskId && preservedGoalId === block.linkedGoalId && readOnly === block.readOnly) {
           return block;
         }
 
@@ -71,6 +74,7 @@ export function useExternalPlannerSync({
           ...block,
           linkedTaskId: preservedTaskId,
           linkedGoalId: preservedGoalId,
+          readOnly,
           ...(nested ? { nestedTaskIds: nested } : {}),
         };
       });

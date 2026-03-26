@@ -11,6 +11,22 @@ describe('appModeReducer', () => {
     expect(result.inboxOpen).toBe(true);
   });
 
+  it('opens briefing from executing without resetting the day', () => {
+    const state: AppModeState = { mode: 'executing', view: 'flow', focusTaskId: null, inboxOpen: false };
+    const result = appModeReducer(state, { type: 'OPEN_BRIEFING' });
+    expect(result.mode).toBe('briefing');
+    expect(result.inboxOpen).toBe(false);
+  });
+
+  it('opens planning from focus and clears focus state', () => {
+    const state: AppModeState = { mode: 'focus', view: 'flow', focusTaskId: 'task-1', inboxOpen: false };
+    const result = appModeReducer(state, { type: 'OPEN_PLANNING', view: 'intentions' });
+    expect(result.mode).toBe('planning');
+    expect(result.view).toBe('intentions');
+    expect(result.focusTaskId).toBeNull();
+    expect(result.inboxOpen).toBe(true);
+  });
+
   it('transitions planning -> executing on START_DAY', () => {
     const state: AppModeState = { mode: 'planning', view: 'flow', focusTaskId: null, inboxOpen: true };
     const result = appModeReducer(state, { type: 'START_DAY' });

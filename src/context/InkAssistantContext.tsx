@@ -17,6 +17,7 @@ interface InkAssistantContextValue {
   inkStreaming: boolean;
   briefingSessionId: number;
   briefingMode: 'briefing' | 'chat';
+  activeThreadId: string | null;
   // Callbacks
   openAssistantPreview: () => void;
   scheduleAssistantClose: () => void;
@@ -24,10 +25,13 @@ interface InkAssistantContextValue {
   closeAssistant: () => void;
   setInkStreaming: (streaming: boolean) => void;
   newChat: () => void;
+  openInkChat: () => void;
+  openPlanningChat: () => void;
   openWeeklyPlanningAssistant: () => void;
   setBriefingMode: (mode: 'briefing' | 'chat') => void;
   setAssistantOpen: (open: boolean) => void;
   setAssistantPinned: (pinned: boolean) => void;
+  setActiveThreadId: (threadId: string | null) => void;
 }
 
 const InkAssistantContext = createContext<InkAssistantContextValue | null>(null);
@@ -46,6 +50,7 @@ export function InkAssistantProvider({
   const [inkStreaming, setInkStreaming] = useState(false);
   const [briefingSessionId, setBriefingSessionId] = useState(0);
   const [briefingMode, setBriefingMode] = useState<'briefing' | 'chat'>('briefing');
+  const [activeThreadId, setActiveThreadId] = useState<string | null>(null);
 
   const closeTimeoutRef = useRef<number | null>(null);
 
@@ -64,12 +69,24 @@ export function InkAssistantProvider({
 
   const isBriefingDay = mode === 'briefing' && view === 'day';
 
+  const beginFreshSession = useCallback((nextMode: 'briefing' | 'chat', pinned: boolean) => {
+    clearCloseTimeout();
+    setBriefingMode(nextMode);
+    setActiveThreadId(null);
+    setBriefingSessionId((n) => n + 1);
+    setAssistantOpen(true);
+    setAssistantPinned(pinned);
+  }, [clearCloseTimeout]);
+
   const openAssistantPreview = useCallback(() => {
     if (isBriefingDay) return;
+    if (!assistantOpen) {
+      beginFreshSession('chat', false);
+      return;
+    }
     clearCloseTimeout();
-    setBriefingMode('chat');
     setAssistantOpen(true);
-  }, [clearCloseTimeout, isBriefingDay]);
+  }, [assistantOpen, beginFreshSession, clearCloseTimeout, isBriefingDay]);
 
   const scheduleAssistantClose = useCallback(() => {
     if (assistantPinned) return;
@@ -85,23 +102,30 @@ export function InkAssistantProvider({
       return;
     }
     if (isBriefingDay) return;
-    clearCloseTimeout();
-    setBriefingMode('chat');
-    setAssistantOpen(true);
-    setAssistantPinned(true);
-  }, [assistantPinned, closeAssistant, clearCloseTimeout, isBriefingDay]);
+    if (assistantOpen) {
+      clearCloseTimeout();
+      setAssistantPinned(true);
+      return;
+    }
+    beginFreshSession('chat', true);
+  }, [assistantOpen, assistantPinned, beginFreshSession, clearCloseTimeout, closeAssistant, isBriefingDay]);
 
   const newChat = useCallback(() => {
+    setActiveThreadId(null);
     setBriefingSessionId((n) => n + 1);
   }, []);
 
+  const openInkChat = useCallback(() => {
+    beginFreshSession('chat', true);
+  }, [beginFreshSession]);
+
+  const openPlanningChat = useCallback(() => {
+    beginFreshSession('briefing', true);
+  }, [beginFreshSession]);
+
   const openWeeklyPlanningAssistant = useCallback(() => {
-    clearCloseTimeout();
-    setBriefingMode('briefing');
-    setBriefingSessionId((n) => n + 1);
-    setAssistantOpen(true);
-    setAssistantPinned(true);
-  }, [clearCloseTimeout]);
+    beginFreshSession('briefing', true);
+  }, [beginFreshSession]);
 
   // Cleanup timeout on unmount
   useEffect(() => () => clearCloseTimeout(), [clearCloseTimeout]);
@@ -114,16 +138,20 @@ export function InkAssistantProvider({
         inkStreaming,
         briefingSessionId,
         briefingMode,
+        activeThreadId,
         openAssistantPreview,
         scheduleAssistantClose,
         togglePinnedAssistant,
         closeAssistant,
         setInkStreaming,
         newChat,
+        openInkChat,
+        openPlanningChat,
         openWeeklyPlanningAssistant,
         setBriefingMode,
         setAssistantOpen,
         setAssistantPinned,
+        setActiveThreadId,
       }}
     >
       {children}

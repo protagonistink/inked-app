@@ -6,14 +6,14 @@ import { buildMinimalContext } from '@/lib/briefingContext';
 import type { SafeStoreKey } from '@/types/electron';
 
 export function useBriefingLifecycle() {
-  const { completeBriefing } = useAppShell();
+  const { completeBriefing, openBriefing } = useAppShell();
   const {
     isInitialized,
     dayCommitInfo,
     resetDay,
   } = useAppStatus();
 
-  const { closeAssistant, setBriefingMode } = useInkAssistant();
+  const { activeThreadId, closeAssistant, openPlanningChat } = useInkAssistant();
 
   const [isEveningReflection, setIsEveningReflection] = useState(false);
   const [pendingDayReset, setPendingDayReset] = useState(false);
@@ -21,16 +21,17 @@ export function useBriefingLifecycle() {
 
   const openFullscreenInk = useCallback(() => {
     closeAssistant();
-    const shouldRunBriefing = dayCommitInfo.state === 'briefing' && !dayCommitInfo.hadBlocks;
-    setBriefingMode(shouldRunBriefing ? 'briefing' : 'chat');
+    openBriefing();
+    openPlanningChat();
     setIsEveningReflection(false);
-  }, [closeAssistant, setBriefingMode, dayCommitInfo.hadBlocks, dayCommitInfo.state]);
+  }, [closeAssistant, openBriefing, openPlanningChat]);
 
   const openEveningReflection = useCallback(() => {
     closeAssistant();
-    setBriefingMode('chat');
+    openBriefing();
+    openPlanningChat();
     setIsEveningReflection(true);
-  }, [closeAssistant, setBriefingMode]);
+  }, [closeAssistant, openBriefing, openPlanningChat]);
 
   const requestDayReset = useCallback(() => {
     setPendingDayReset(true);
@@ -94,11 +95,10 @@ export function useBriefingLifecycle() {
     window.api.store.set(`briefing.dismissed.${today}`, true);
 
     if (wasEvening) {
-      void generateEveningReflection(today);
+      void generateEveningReflection(today, activeThreadId);
       return;
     }
-    void window.api.chat.clear(today);
-  }, [pendingDayReset, resetDay, isEveningReflection, completeBriefing]);
+  }, [activeThreadId, pendingDayReset, resetDay, isEveningReflection, completeBriefing]);
 
   return {
     isEveningReflection,
@@ -108,26 +108,24 @@ export function useBriefingLifecycle() {
   };
 }
 
-async function generateEveningReflection(today: string) {
-  try {
-    const msgs = await window.api.chat.load(today);
-    if (msgs.length < 2) return;
+async function generateEveningReflection(today: string, threadId: string | null) {
+  if (!threadId) return;
+  const thread = await window.api.chat.loadThread(threadId);
+  const msgs = thread?.messages ?? [];
+  if (msgs.length < 2) return;
 
-    const transcript = msgs.map((m) => `${m.role}: ${m.content}`).join('\n').slice(0, 2000);
-    const res = await window.api.ai.chat(
-      [{ role: 'user', content: `Summarize this end-of-day conversation in 1-2 sentences as a carry-forward note for tomorrow morning. Focus on what landed, what slipped, and any decisions made. Be concise and factual.\n\n${transcript}` }],
-      buildMinimalContext()
-    );
+  const transcript = msgs.map((m) => `${m.role}: ${m.content}`).join('\n').slice(0, 2000);
+  const res = await window.api.ai.chat(
+    [{ role: 'user', content: `Summarize this end-of-day conversation in 1-2 sentences as a carry-forward note for tomorrow morning. Focus on what landed, what slipped, and any decisions made. Be concise and factual.\n\n${transcript}` }],
+    buildMinimalContext()
+  );
 
-    if (!res.success || !res.content) return;
+  if (!res.success || !res.content) return;
 
-    const ctx = await window.api.ink.readContext();
-    const entry = ctx.journalEntries?.find((e) => e.date === today);
-    if (entry) {
-      entry.eveningReflection = res.content;
-      await window.api.ink.appendJournal(entry);
-    }
-  } finally {
-    void window.api.chat.clear(today);
+  const ctx = await window.api.ink.readContext();
+  const entry = ctx.journalEntries?.find((e) => e.date === today);
+  if (entry) {
+    entry.eveningReflection = res.content;
+    await window.api.ink.appendJournal(entry);
   }
 }

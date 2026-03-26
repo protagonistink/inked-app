@@ -8,6 +8,7 @@ import {
     Play,
     Inbox,
     Feather,
+    PenLine,
     Settings,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -17,6 +18,7 @@ import { OverlaySurface } from '../shared/OverlaySurface';
 interface CommandPaletteProps {
     onOpenSettings: () => void;
     onOpenInk: () => void;
+    onOpenPlot: () => void;
 }
 
 interface CommandItem {
@@ -28,7 +30,7 @@ interface CommandItem {
     category: string;
 }
 
-export function CommandPalette({ onOpenSettings, onOpenInk }: CommandPaletteProps) {
+export function CommandPalette({ onOpenSettings, onOpenInk, onOpenPlot }: CommandPaletteProps) {
     const [isOpen, setIsOpen] = useState(false);
     const [query, setQuery] = useState('');
     const [selectedIndex, setSelectedIndex] = useState(0);
@@ -41,6 +43,7 @@ export function CommandPalette({ onOpenSettings, onOpenInk }: CommandPaletteProp
         // Navigation
         { id: 'view-flow', title: "Open Flow", icon: Zap, category: 'Navigation', action: () => setView('flow') },
         { id: 'view-intentions', title: 'Open Intentions', icon: Target, category: 'Navigation', action: () => setView('intentions') },
+        { id: 'view-plot', title: 'Plot', icon: PenLine, category: 'Navigation', action: () => { setIsOpen(false); onOpenPlot(); } },
         { id: 'view-inbox', title: inboxOpen ? 'Close Inbox' : 'Open Inbox', icon: Inbox, category: 'Navigation', action: () => { if (inboxOpen) closeInbox(); else openInbox(); } },
         { id: 'view-ink', title: 'Open Ink', icon: Feather, category: 'Navigation', action: () => { setIsOpen(false); onOpenInk(); } },
         { id: 'view-settings', title: 'Open Settings', icon: Settings, category: 'Navigation', action: () => { setIsOpen(false); onOpenSettings(); } },

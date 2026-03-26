@@ -1,5 +1,5 @@
 import { useCallback, type Dispatch, type SetStateAction } from 'react';
-import type { PlannedTask, WeeklyGoal } from '@/types';
+import type { PlannedTask, ScheduleBlock, WeeklyGoal } from '@/types';
 import { MAX_WEEKLY_GOALS } from '@/context/plannerState';
 const DEFAULT_WEEKLY_GOAL_COLORS = ['bg-accent-warm', 'bg-done', 'bg-accent-green'];
 
@@ -7,10 +7,12 @@ export function useGoalActions({
   weeklyGoals,
   setWeeklyGoals,
   setPlannedTasks,
+  setScheduleBlocks,
 }: {
   weeklyGoals: WeeklyGoal[];
   setWeeklyGoals: Dispatch<SetStateAction<WeeklyGoal[]>>;
   setPlannedTasks: Dispatch<SetStateAction<PlannedTask[]>>;
+  setScheduleBlocks?: Dispatch<SetStateAction<ScheduleBlock[]>>;
 }) {
   const addWeeklyGoal = useCallback((title: string, color = 'bg-text-muted') => {
     if (!title.trim() || weeklyGoals.length >= MAX_WEEKLY_GOALS) return false;
@@ -54,12 +56,21 @@ export function useGoalActions({
         weeklyGoalId: task.weeklyGoalId ? (nextGoalIdByOldId.get(task.weeklyGoalId) ?? null) : null,
       }))
     );
-  }, [setPlannedTasks, setWeeklyGoals, weeklyGoals]);
+    setScheduleBlocks?.((prev) =>
+      prev.map((block) => {
+        if (!block.linkedGoalId) return block;
+        const mapped = nextGoalIdByOldId.get(block.linkedGoalId);
+        if (mapped === undefined) return block;
+        return { ...block, linkedGoalId: mapped };
+      })
+    );
+  }, [setPlannedTasks, setScheduleBlocks, setWeeklyGoals, weeklyGoals]);
 
   const removeWeeklyGoal = useCallback((id: string) => {
     setWeeklyGoals((prev) => prev.filter((goal) => goal.id !== id));
     setPlannedTasks((prev) => prev.map((t) => t.weeklyGoalId === id ? { ...t, weeklyGoalId: null } : t));
-  }, [setWeeklyGoals, setPlannedTasks]);
+    setScheduleBlocks?.((prev) => prev.map((b) => b.linkedGoalId === id ? { ...b, linkedGoalId: null } : b));
+  }, [setWeeklyGoals, setPlannedTasks, setScheduleBlocks]);
 
   const renameWeeklyGoal = useCallback((id: string, title: string) => {
     setWeeklyGoals((prev) => prev.map((goal) => goal.id === id ? { ...goal, title: title.trim() || goal.title } : goal));

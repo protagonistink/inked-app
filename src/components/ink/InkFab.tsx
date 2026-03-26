@@ -21,7 +21,6 @@ export function InkFab({ briefingModeOverride }: InkFabProps) {
     togglePinnedAssistant,
     inkStreaming,
     briefingSessionId,
-    newChat,
     setInkStreaming,
   } = useInkAssistant();
 
@@ -46,7 +45,6 @@ export function InkFab({ briefingModeOverride }: InkFabProps) {
               mode={displayMode}
               variant="overlay"
               onClose={togglePinnedAssistant}
-              onNewChat={newChat}
               onStreamingChange={setInkStreaming}
             />
           </Suspense>

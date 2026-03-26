@@ -15,6 +15,18 @@ export function appModeReducer(state: AppModeState, action: AppModeAction): AppM
       if (state.mode !== 'briefing') return state;
       return { ...state, mode: 'planning', inboxOpen: true };
 
+    case 'OPEN_BRIEFING':
+      return { ...state, mode: 'briefing', view: 'flow', focusTaskId: null, inboxOpen: false };
+
+    case 'OPEN_PLANNING':
+      return {
+        ...state,
+        mode: 'planning',
+        view: action.view ?? 'flow',
+        focusTaskId: null,
+        inboxOpen: true,
+      };
+
     case 'START_DAY':
       if (state.mode !== 'planning') return state;
       return { ...state, mode: 'executing', inboxOpen: false };
@@ -127,6 +139,8 @@ export function useAppMode() {
   return {
     state,
     completeBriefing: () => dispatch({ type: 'COMPLETE_BRIEFING' }),
+    openBriefing: () => dispatch({ type: 'OPEN_BRIEFING' }),
+    openPlanning: (view?: View) => dispatch({ type: 'OPEN_PLANNING', view }),
     startDay: () => dispatch({ type: 'START_DAY' }),
     clickTask: (taskId: string) => dispatch({ type: 'CLICK_TASK', taskId }),
     enterFocus: (taskId: string) => dispatch({ type: 'ENTER_FOCUS', taskId }),

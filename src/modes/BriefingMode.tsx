@@ -14,7 +14,7 @@ export interface BriefingModeProps {
 }
 
 export function BriefingMode({ onComplete, isEvening }: BriefingModeProps) {
-  const { briefingSessionId, newChat, setInkStreaming, briefingMode } = useInkAssistant();
+  const { briefingSessionId, setInkStreaming, briefingMode } = useInkAssistant();
 
   return (
     <>
@@ -31,7 +31,6 @@ export function BriefingMode({ onComplete, isEvening }: BriefingModeProps) {
                 key={briefingSessionId}
                 mode={briefingMode}
                 onClose={onComplete}
-                onNewChat={newChat}
                 onStreamingChange={setInkStreaming}
               />
             </Suspense>
@@ -44,7 +43,6 @@ export function BriefingMode({ onComplete, isEvening }: BriefingModeProps) {
               key={briefingSessionId}
               mode={briefingMode}
               onClose={onComplete}
-              onNewChat={newChat}
               onStreamingChange={setInkStreaming}
             />
           </Suspense>

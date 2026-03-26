@@ -10,6 +10,8 @@ export interface AppModeState {
 
 export type AppModeAction =
   | { type: 'COMPLETE_BRIEFING' }
+  | { type: 'OPEN_BRIEFING' }
+  | { type: 'OPEN_PLANNING'; view?: View }
   | { type: 'START_DAY' }
   | { type: 'CLICK_TASK'; taskId: string }
   | { type: 'ENTER_FOCUS'; taskId: string }

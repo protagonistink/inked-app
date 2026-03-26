@@ -72,7 +72,7 @@ export function BlockCard({
   selectedNestedTaskId?: string | null;
   onSelectNestedTask?: (taskId: string) => void;
 }) {
-  const { isFocus } = useTheme();
+  const { isFocus, isLight } = useTheme();
   const { enterFocus } = useAppShell();
   const { plannedTasks, weeklyGoals, setActiveTask, toggleTask, nestTaskInBlock, returnTaskToInbox } = usePlanner();
   const linkedTask = block.linkedTaskId ? plannedTasks.find((task) => task.id === block.linkedTaskId) : null;
@@ -383,7 +383,7 @@ export function BlockCard({
         <h4 className={cn(
           'truncate focus-editorial font-display font-medium leading-snug flex-1',
           isCompact ? 'text-[12px]' : 'text-[14px]',
-          isDone ? 'text-text-muted line-through' : 'text-slate-100'
+          isDone ? 'text-text-muted line-through' : isLight ? 'text-text-emphasis' : 'text-slate-100'
         )}>{block.title}</h4>
         <span className="shrink-0 ml-2 flex items-center gap-1.5 text-[10px] text-text-muted tracking-wider whitespace-nowrap">
           {physicsWarning && (

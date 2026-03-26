@@ -23,7 +23,6 @@ import type {
   WeeklyGoal,
 } from '@/types';
 import type { AppMode, View } from '@/types/appMode';
-import { mergeScheduleBlocksWithRituals } from '@/lib/planner';
 import {
   loadPlannerState,
   usePlannerPersistence,
@@ -58,6 +57,8 @@ interface AppShellContextValue {
   focusTaskId: string | null;
   inboxOpen: boolean;
   completeBriefing: () => void;
+  openBriefing: () => void;
+  openPlanning: (view?: View) => void;
   startDay: () => void;
   clickTask: (taskId: string) => void;
   enterFocus: (taskId: string) => void;
@@ -253,7 +254,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     updateGoalColor,
     updateGoalCountdown,
     reorderWeeklyGoals,
-  } = useGoalActions({ weeklyGoals, setWeeklyGoals, setPlannedTasks });
+  } = useGoalActions({ weeklyGoals, setWeeklyGoals, setPlannedTasks, setScheduleBlocks });
 
   const viewDateValue = useMemo(() => new Date(`${viewDate}T12:00:00`), [viewDate]);
 
@@ -413,10 +414,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     return () => window.removeEventListener(PREFERENCES_UPDATED_EVENT, handlePreferencesUpdated as EventListener);
   }, []);
 
-  useEffect(() => {
-    if (!isInitialized) return;
-    setScheduleBlocks((prev) => mergeScheduleBlocksWithRituals(prev, rituals, workdayStart, viewDate));
-  }, [isInitialized, rituals, setScheduleBlocks, viewDate, workdayStart]);
+  // Rituals are no longer auto-placed as fixed blocks — Ink schedules them into gaps during planning.
 
   const markWeeklyPlanningComplete = useCallback((date?: string) => {
     setWeeklyPlanningLastCompleted(date ?? format(new Date(), 'yyyy-MM-dd'));
@@ -566,12 +564,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
     );
 
     setScheduleBlocks((prev) =>
-      mergeScheduleBlocksWithRituals(
-        prev.filter((block) => block.readOnly || block.kind !== 'focus'),
-        rituals,
-        workdayStart,
-        viewDate
-      ).map((block) => block.nestedTaskIds?.length ? { ...block, nestedTaskIds: [] } : block)
+      prev
+        .filter((block) => block.readOnly || block.kind !== 'focus')
+        .map((block) => block.nestedTaskIds?.length ? { ...block, nestedTaskIds: [] } : block)
     );
     setPlannedTasks((prev) =>
       prev.map((task) =>
@@ -591,6 +586,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
     focusTaskId: appMode.state.focusTaskId,
     inboxOpen: appMode.state.inboxOpen,
     completeBriefing: appMode.completeBriefing,
+    openBriefing: appMode.openBriefing,
+    openPlanning: appMode.openPlanning,
     startDay: appMode.startDay,
     clickTask: appMode.clickTask,
     enterFocus: appMode.enterFocus,
@@ -607,6 +604,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
     appMode.clickTask,
     appMode.closeInbox,
     appMode.completeBriefing,
+    appMode.openBriefing,
+    appMode.openPlanning,
     appMode.enterFocus,
     appMode.exitFocus,
     appMode.openInbox,

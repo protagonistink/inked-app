@@ -12,6 +12,12 @@ export function loadUserPhysics(): UserPhysics {
   return store.get('userPhysics') as UserPhysics;
 }
 
+function formatHour12(h: number, m: number): string {
+  const period = h >= 12 ? 'PM' : 'AM';
+  const hour = h > 12 ? h - 12 : h === 0 ? 12 : h;
+  return m === 0 ? `${hour} ${period}` : `${hour}:${String(m).padStart(2, '0')} ${period}`;
+}
+
 function formatInkContextForPrompt(ink: InkContext): string {
   const sections: string[] = [];
 
@@ -171,8 +177,8 @@ export function buildSystemPrompt(ctx: BriefingContext): string {
   const grossCapacityHours = (ctx.remainingWorkdayMinutes / 60).toFixed(1);
   const scheduledHours = (ctx.scheduledMinutes / 60).toFixed(1);
   const remainingHours = (ctx.availableFocusMinutes / 60).toFixed(1);
-  const startTime = `${ctx.workdayStartHour}:${String(ctx.workdayStartMin).padStart(2, '0')}`;
-  const endTime = `${ctx.workdayEndHour}:${String(ctx.workdayEndMin).padStart(2, '0')}`;
+  const startTime = formatHour12(ctx.workdayStartHour, ctx.workdayStartMin);
+  const endTime = formatHour12(ctx.workdayEndHour, ctx.workdayEndMin);
   const pastCloseHours = Math.floor(ctx.minutesPastClose / 60);
   const pastCloseMinutes = ctx.minutesPastClose % 60;
   const afterHoursLabel = ctx.minutesPastClose === 0
@@ -407,6 +413,11 @@ ${gcalList}
 ### Deadlines and Countdowns
 ${countdownsDetailed}
 
+### Daily Rituals (Must Complete Today — Not Yet Scheduled)
+${ctx.rituals && ctx.rituals.length > 0
+  ? ctx.rituals.map(r => `- ${r.title} (${r.estimateMins}m)`).join('\n')
+  : 'No daily rituals configured.'}
+
 ### Already Committed On The Planning Date
 ${alreadyCommitted}
 
@@ -442,7 +453,7 @@ Before the schedule block, do the planning work in plain language:
 
 Output a fenced JSON array with the language tag "schedule". Required fields per entry:
 - \`title\` (string): exact task title for existing tasks, descriptive title for new ones
-- \`startHour\` (integer, 24h): hour the block starts
+- \`startHour\` (integer, 24h clock): hour the block starts
 - \`startMin\` (integer): minute the block starts
 - \`durationMins\` (integer): block length in minutes
 
@@ -459,9 +470,11 @@ Rules:
 - Use exact task titles from the committed or Asana task lists when scheduling existing tasks
 - You can include new tasks by inventing a title — they'll be created automatically when the user commits
 - Respect existing calendar events — never double-book
+- **Daily rituals are non-negotiable — every ritual listed above MUST appear as an entry in the schedule JSON block, no exceptions. Find a gap and place it. Do not omit a ritual even if the day feels full.**
 - Honor peak energy window (${ctx.userPhysics?.peakEnergyWindow ?? 'morning'}) for deep work
 - If a task has no clear duration, use ${ctx.userPhysics?.focusBlockLength ?? 60} minutes (the user's focus block length)
 - Schedule blocks within the workday window: ${startTime} – ${endTime}
+- When referring to times in your prose, always use 12-hour format (e.g. "9 AM", "2:30 PM"), never 24-hour format
 - Default to fewer, sharper blocks over a crowded plan
 - If there are more meaningful tasks than fit, choose the essential ones and say what got left out
 - The schedule block doesn't count against the word limit

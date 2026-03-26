@@ -360,6 +360,7 @@ export interface BriefingContext {
       overdueInvoices: number;
     };
   };
+  rituals?: Array<{ title: string; estimateMins: number }>;
 }
 
 export interface InkJournalEntry {
