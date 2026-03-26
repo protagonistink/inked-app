@@ -43,9 +43,9 @@ describe('buildBriefingContext', () => {
   });
 });
 
-function makeChip(startHour: number, startMin: number, durationMins: number): ScheduleChip {
+function makeChip(startHour: number, startMin: number, durationMins: number, index = 0): ScheduleChip {
   return {
-    id: `chip-${startHour}`,
+    id: `chip-${index}`,
     title: `Task ${startHour}`,
     startHour,
     startMin,
@@ -58,12 +58,12 @@ function makeChip(startHour: number, startMin: number, durationMins: number): Sc
 
 describe('reorderChips', () => {
   it('returns original array when fromIndex === toIndex', () => {
-    const chips = [makeChip(9, 0, 60), makeChip(10, 0, 30)];
+    const chips = [makeChip(9, 0, 60, 0), makeChip(10, 0, 30, 1)];
     expect(reorderChips(chips, 0, 0)).toBe(chips);
   });
 
   it('moves chip up and cascades times from new position', () => {
-    const chips = [makeChip(9, 0, 60), makeChip(10, 0, 30), makeChip(10, 30, 45)];
+    const chips = [makeChip(9, 0, 60, 0), makeChip(10, 0, 30, 1), makeChip(10, 30, 45, 2)];
     const result = reorderChips(chips, 2, 0);
     // cascadeStart = 0, anchor = 9:00
     // slot 0 (moved chip, 45m): 9:00–9:45
@@ -79,7 +79,7 @@ describe('reorderChips', () => {
   });
 
   it('moves chip down and cascades times from earlier position', () => {
-    const chips = [makeChip(9, 0, 60), makeChip(10, 0, 30), makeChip(10, 30, 45)];
+    const chips = [makeChip(9, 0, 60, 0), makeChip(10, 0, 30, 1), makeChip(10, 30, 45, 2)];
     const result = reorderChips(chips, 0, 2);
     // cascadeStart = 0, anchor = 9:00
     expect(result[0].startHour).toBe(9);
@@ -92,14 +92,14 @@ describe('reorderChips', () => {
   });
 
   it('leaves chips above cascadeStart unchanged', () => {
-    const chips = [makeChip(8, 0, 30), makeChip(9, 0, 60), makeChip(10, 0, 30)];
+    const chips = [makeChip(8, 0, 30, 0), makeChip(9, 0, 60, 1), makeChip(10, 0, 30, 2)];
     const result = reorderChips(chips, 2, 1);
     expect(result[0].startHour).toBe(8);
     expect(result[0].startMin).toBe(0);
   });
 
   it('clamps times that would exceed 23:59', () => {
-    const chips = [makeChip(23, 30, 45), makeChip(23, 45, 60)];
+    const chips = [makeChip(23, 30, 45, 0), makeChip(23, 45, 60, 1)];
     const result = reorderChips(chips, 1, 0);
     result.forEach(chip => {
       expect(chip.startHour).toBeLessThanOrEqual(23);

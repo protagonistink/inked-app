@@ -247,7 +247,7 @@ export function reorderChips(chips: ScheduleChip[], fromIndex: number, toIndex: 
     // Clamp to prevent overflow past 23:59
     const maxStart = 23 * 60 + 59 - chip.durationMins;
     const clampedStart = Math.min(Math.max(cursorMins, 0), maxStart);
-    cursorMins = clampedStart + chip.durationMins;
+    cursorMins = Math.min(clampedStart + chip.durationMins, 23 * 60 + 59);
     return {
       ...chip,
       startHour: Math.floor(clampedStart / 60),
