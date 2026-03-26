@@ -94,27 +94,55 @@ export function MorningWelcome({ onStartDay, compact = false, inkMode, mode = 'b
         </span>
         <div className="flex flex-row flex-wrap gap-3">
           {weeklyGoals.map((goal) => (
-            <span
-              key={goal.id}
-              className="text-sm px-3 py-1 rounded-full"
-              style={{
-                border: '1px solid var(--color-border)',
-                background: 'transparent',
-                color: 'var(--color-text-primary)',
-              }}
-            >
-              {goal.title}
-            </span>
+            mode === 'chat' ? (
+              <button
+                key={goal.id}
+                onClick={() => onStartDay(`Let's talk about: ${goal.title}`)}
+                className="text-sm px-3 py-1 rounded-full cursor-pointer transition-colors"
+                style={{
+                  border: '1px solid var(--color-border)',
+                  background: 'transparent',
+                  color: 'var(--color-text-primary)',
+                }}
+                onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.borderColor = 'var(--color-text-secondary)'; }}
+                onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.borderColor = 'var(--color-border)'; }}
+              >
+                {goal.title}
+              </button>
+            ) : (
+              <span
+                key={goal.id}
+                className="text-sm px-3 py-1 rounded-full"
+                style={{
+                  border: '1px solid var(--color-border)',
+                  background: 'transparent',
+                  color: 'var(--color-text-primary)',
+                }}
+              >
+                {goal.title}
+              </span>
+            )
           ))}
         </div>
       </div>
 
       {/* C. No task card */}
 
+      {mode === 'chat' && (
+        <div
+          className="flex items-center gap-3 mt-8"
+          style={{ color: 'var(--color-text-muted)' }}
+        >
+          <div className="flex-1 h-px" style={{ background: 'var(--color-border)' }} />
+          <span className="text-[11px] uppercase tracking-[0.14em]">or</span>
+          <div className="flex-1 h-px" style={{ background: 'var(--color-border)' }} />
+        </div>
+      )}
+
       {/* D. Grounding Prompt */}
       <p
         className="font-display font-medium"
-        style={{ color: 'var(--color-text-emphasis)', fontSize: compact ? '1.15rem' : '1.5rem', marginTop: compact ? '2.75rem' : '5rem' }}
+        style={{ color: 'var(--color-text-emphasis)', fontSize: compact ? '1.15rem' : '1.5rem', marginTop: mode === 'chat' ? '1.5rem' : (compact ? '2.75rem' : '5rem') }}
       >
         {promptCopy.prompt}
       </p>
