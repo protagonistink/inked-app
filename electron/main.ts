@@ -22,6 +22,7 @@ const APP_ICON_PATH = path.join(__dirname, '../build/icon.png');
 const TRAY_ICON_PATH = path.join(process.env.VITE_PUBLIC!, 'icon-tray.png');
 
 let mainWindow: BrowserWindow | null;
+let captureWindow: BrowserWindow | null = null;
 let tray: Tray | null = null;
 let isQuitting = false;
 const VITE_DEV_SERVER_URL = process.env['VITE_DEV_SERVER_URL'];
@@ -100,6 +101,46 @@ function createWindow() {
   }
 }
 
+function createCaptureWindow() {
+  const { width: sw, height: sh } = screen.getPrimaryDisplay().workAreaSize;
+  captureWindow = new BrowserWindow({
+    width: 340,
+    height: 320,
+    x: Math.round(sw / 2 - 170),
+    y: Math.round(sh * 0.22),
+    minWidth: 280,
+    minHeight: 240,
+    maxWidth: 480,
+    maxHeight: 440,
+    frame: false,
+    alwaysOnTop: true,
+    level: 'floating',
+    skipTaskbar: true,
+    resizable: true,
+    backgroundColor: '#FEF3C7',
+    webPreferences: {
+      preload: path.join(__dirname, 'preload.js'),
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: true,
+      webSecurity: true,
+      allowRunningInsecureContent: false,
+    },
+  });
+
+  captureWindow.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
+  captureWindow.on('blur', () => captureWindow?.hide());
+
+  if (VITE_DEV_SERVER_URL) {
+    void captureWindow.loadURL(`${VITE_DEV_SERVER_URL}?mode=capture`);
+  } else {
+    void captureWindow.loadFile(path.join(process.env.DIST!, 'index.html'), {
+      query: { mode: 'capture' },
+    });
+  }
+  captureWindow.hide();
+}
+
 function createTray() {
   const icon = nativeImage.createFromPath(TRAY_ICON_PATH);
   icon.setTemplateImage(true);
@@ -153,6 +194,7 @@ function createTray() {
 
 app.on('before-quit', () => {
   isQuitting = true;
+  captureWindow?.destroy();
 });
 
 app.on('window-all-closed', () => {
@@ -184,7 +226,7 @@ app.whenReady().then(() => {
   registerChatHistoryHandlers();
   registerFinanceHandlers();
   registerStripeHandlers();
-  registerCaptureHandlers();
+  registerCaptureHandlers(() => captureWindow);
 
   ipcMain.handle('window:activate', () => {
     app.focus({ steal: true });
@@ -224,12 +266,17 @@ app.whenReady().then(() => {
   });
 
   createWindow();
+  createCaptureWindow();
   createTray();
 
   globalShortcut.register('CommandOrControl+Shift+.', () => {
-    mainWindow?.show();
-    mainWindow?.focus();
-    mainWindow?.webContents.send('capture:open-overlay');
+    if (!captureWindow) return;
+    if (captureWindow.isVisible()) {
+      captureWindow.hide();
+    } else {
+      captureWindow.show();
+      captureWindow.focus();
+    }
   });
 
   // Purge stale captures at midnight and on wake
@@ -245,9 +292,13 @@ app.whenReady().then(() => {
         { label: 'New Task', accelerator: 'CmdOrCtrl+N', click: () => mainWindow?.webContents.send('menu:new-task') },
         { label: 'New Event', accelerator: 'CmdOrCtrl+Shift+N', click: () => mainWindow?.webContents.send('menu:new-event') },
         { label: 'Quick Capture', accelerator: 'CmdOrCtrl+Shift+.', click: () => {
-          mainWindow?.show();
-          mainWindow?.focus();
-          mainWindow?.webContents.send('capture:open-overlay');
+          if (!captureWindow) return;
+          if (captureWindow.isVisible()) {
+            captureWindow.hide();
+          } else {
+            captureWindow.show();
+            captureWindow.focus();
+          }
         }},
         { type: 'separator' },
         { role: 'close' },

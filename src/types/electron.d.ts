@@ -300,6 +300,7 @@ interface CaptureAPI {
   purgeStale: () => Promise<boolean>;
   onOpenOverlay: (cb: () => void) => () => void;
   sendToNotion: (text: string) => Promise<{ success: boolean }>;
+  hideCaptureWindow: () => Promise<void>;
 }
 
 declare global {

@@ -178,6 +178,7 @@ contextBridge.exposeInMainWorld('api', {
       return () => ipcRenderer.removeListener('capture:open-overlay', handler);
     },
     sendToNotion: (text: string) => ipcRenderer.invoke('capture:send-to-notion', text),
+    hideCaptureWindow: () => ipcRenderer.invoke('capture:hide-capture-window'),
   },
   // Finance (Compass engine)
   finance: {

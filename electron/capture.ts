@@ -1,4 +1,4 @@
-import { ipcMain } from 'electron';
+import { ipcMain, BrowserWindow } from 'electron';
 import { store } from './store';
 import { getSecure } from './secure-store';
 import crypto from 'node:crypto';
@@ -33,7 +33,7 @@ export function purgeStaleCapturesOnWake() {
   if (fresh.length !== entries.length) setEntries(fresh);
 }
 
-export function registerCaptureHandlers() {
+export function registerCaptureHandlers(getCaptureWindow: () => BrowserWindow | null = () => null) {
   ipcMain.handle('capture:list', () => {
     const prefix = todayPrefix();
     return getEntries().filter((e) => e.createdAt.startsWith(prefix));
@@ -98,5 +98,9 @@ export function registerCaptureHandlers() {
       throw new Error(`Notion API error ${response.status}: ${error}`);
     }
     return { success: true };
+  });
+
+  ipcMain.handle('capture:hide-capture-window', () => {
+    getCaptureWindow()?.hide();
   });
 }

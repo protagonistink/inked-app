@@ -112,6 +112,7 @@ export function installMockApi(): typeof window.api {
       purgeStale: vi.fn().mockResolvedValue(true),
       onOpenOverlay: vi.fn().mockReturnValue(() => {}),
       sendToNotion: vi.fn().mockResolvedValue({ success: true }),
+      hideCaptureWindow: vi.fn().mockResolvedValue(undefined),
     },
     stripe: {
       getDashboard: vi.fn().mockResolvedValue({ success: false }),
