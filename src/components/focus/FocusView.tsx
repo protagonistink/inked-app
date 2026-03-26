@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
-import { Pause, Play, RotateCcw, Check } from 'lucide-react';
+import { Check } from 'lucide-react';
 import { usePlanner } from '@/context/AppContext';
 import { PomodoroTimer } from '@/components/PomodoroTimer';
 import { cn } from '@/lib/utils';
@@ -27,12 +27,10 @@ export function FocusView({ taskId, onExit }: FocusViewProps) {
 
   const [timerProgress, setTimerProgress] = useState(0);
   const [timeRemaining, setTimeRemaining] = useState(0);
-  const [isPaused, setIsPaused] = useState(false);
   const [isRunning, setIsRunning] = useState(false);
 
   useEffect(() => {
     const cleanup = window.api.pomodoro.onTick((state) => {
-      setIsPaused(state.isPaused);
       setIsRunning(state.isRunning);
       setTimeRemaining(state.timeRemaining);
       if (state.isRunning && state.totalTime > 0) {
@@ -113,13 +111,26 @@ export function FocusView({ taskId, onExit }: FocusViewProps) {
       {/* Center stage */}
       <div className="relative z-10 flex flex-col items-center gap-8 max-w-xl w-full px-8 text-center">
 
-        {/* Task title — the hero */}
+        {/* Task title row with circle check */}
         <div className="flex flex-col items-center gap-3">
-          <h1 className="font-display text-3xl text-text-emphasis leading-tight">
-            {task?.title ?? 'Focus'}
-          </h1>
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => void handleDone()}
+              className="w-4 h-4 rounded-full border-2 flex items-center justify-center shrink-0 transition-colors"
+              style={{
+                borderColor: task?.status === 'done' ? 'var(--color-accent-warm)' : 'var(--color-text-muted)',
+                background: task?.status === 'done' ? 'var(--color-accent-warm)' : 'transparent',
+              }}
+              title="Mark done and exit focus"
+            >
+              {task?.status === 'done' && <Check className="w-2.5 h-2.5 text-white" strokeWidth={3} />}
+            </button>
+            <h1 className="font-display text-3xl text-text-emphasis leading-tight">
+              {task?.title ?? 'Focus'}
+            </h1>
+          </div>
 
-          {/* Intention badge */}
+          {/* Goal badge (unchanged) */}
           {linkedGoal && (
             <span
               className={cn(
@@ -143,6 +154,20 @@ export function FocusView({ taskId, onExit }: FocusViewProps) {
           <PomodoroTimer />
         </div>
 
+        {/* Start work CTA — only when not yet running */}
+        {!isRunning && (
+          <button
+            onClick={() => void window.api.pomodoro.start(taskId, task?.title ?? 'Focus')}
+            className="w-full max-w-xs rounded-xl py-3 text-[14px] font-medium transition-colors"
+            style={{
+              background: 'var(--color-accent-warm)',
+              color: 'var(--color-text-on-accent)',
+            }}
+          >
+            Start work
+          </button>
+        )}
+
         {/* Time-of-day awareness */}
         <div className="text-[13px] text-text-muted tabular-nums">
           {timeInfo.timeStr}
@@ -153,32 +178,6 @@ export function FocusView({ taskId, onExit }: FocusViewProps) {
           )}
         </div>
 
-        {/* Icon controls */}
-        <div className="flex gap-5 items-center justify-center">
-          {/* Pause/Play toggle */}
-          <button
-            onClick={() => void window.api.pomodoro.pause()}
-            className="w-9 h-9 rounded-full bg-[rgba(255,255,255,0.03)] border border-[rgba(255,255,255,0.06)] flex items-center justify-center hover:border-[rgba(255,255,255,0.12)] transition-colors"
-          >
-            {isPaused
-              ? <Play className="w-3.5 h-3.5 text-text-muted" />
-              : <Pause className="w-3.5 h-3.5 text-text-muted" />}
-          </button>
-          {/* Reset */}
-          <button
-            onClick={() => void window.api.pomodoro.stop()}
-            className="w-9 h-9 rounded-full bg-[rgba(255,255,255,0.03)] border border-[rgba(255,255,255,0.06)] flex items-center justify-center hover:border-[rgba(255,255,255,0.12)] transition-colors"
-          >
-            <RotateCcw className="w-3.5 h-3.5 text-text-muted" />
-          </button>
-          {/* Done — larger, rust-styled */}
-          <button
-            onClick={() => void handleDone()}
-            className="w-11 h-11 rounded-full bg-[rgba(200,60,47,0.1)] border border-[rgba(200,60,47,0.25)] flex items-center justify-center hover:bg-[rgba(200,60,47,0.15)] transition-colors"
-          >
-            <Check className="w-[18px] h-[18px] text-[rgba(220,100,85,0.9)]" strokeWidth={2.5} />
-          </button>
-        </div>
       </div>
 
       {/* ESC hint */}
