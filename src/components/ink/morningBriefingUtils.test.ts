@@ -1,7 +1,8 @@
 // @vitest-environment jsdom
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { buildBriefingContext, stripStructuredAssistantBlocks } from './morningBriefingUtils';
+import { buildBriefingContext, stripStructuredAssistantBlocks, reorderChips } from './morningBriefingUtils';
+import type { ScheduleChip } from './morningBriefingUtils';
 import { installMockApi } from '../../test/mockApi';
 
 describe('buildBriefingContext', () => {
@@ -39,6 +40,71 @@ describe('buildBriefingContext', () => {
     expect(context.remainingWorkdayMinutes).toBe(420);
     expect(context.availableFocusMinutes).toBe(330);
     expect(context.scheduledMinutes).toBe(90);
+  });
+});
+
+function makeChip(startHour: number, startMin: number, durationMins: number): ScheduleChip {
+  return {
+    id: `chip-${startHour}`,
+    title: `Task ${startHour}`,
+    startHour,
+    startMin,
+    durationMins,
+    matchedTaskId: null,
+    matchedGoalId: null,
+    selected: true,
+  };
+}
+
+describe('reorderChips', () => {
+  it('returns original array when fromIndex === toIndex', () => {
+    const chips = [makeChip(9, 0, 60), makeChip(10, 0, 30)];
+    expect(reorderChips(chips, 0, 0)).toBe(chips);
+  });
+
+  it('moves chip up and cascades times from new position', () => {
+    const chips = [makeChip(9, 0, 60), makeChip(10, 0, 30), makeChip(10, 30, 45)];
+    const result = reorderChips(chips, 2, 0);
+    // cascadeStart = 0, anchor = 9:00
+    // slot 0 (moved chip, 45m): 9:00–9:45
+    expect(result[0].startHour).toBe(9);
+    expect(result[0].startMin).toBe(0);
+    expect(result[0].durationMins).toBe(45);
+    // slot 1 (original first, 60m): 9:45–10:45
+    expect(result[1].startHour).toBe(9);
+    expect(result[1].startMin).toBe(45);
+    // slot 2 (original second, 30m): 10:45–11:15
+    expect(result[2].startHour).toBe(10);
+    expect(result[2].startMin).toBe(45);
+  });
+
+  it('moves chip down and cascades times from earlier position', () => {
+    const chips = [makeChip(9, 0, 60), makeChip(10, 0, 30), makeChip(10, 30, 45)];
+    const result = reorderChips(chips, 0, 2);
+    // cascadeStart = 0, anchor = 9:00
+    expect(result[0].startHour).toBe(9);
+    expect(result[0].startMin).toBe(0);
+    expect(result[0].durationMins).toBe(30);
+    expect(result[1].startHour).toBe(9);
+    expect(result[1].startMin).toBe(30);
+    expect(result[2].startHour).toBe(10);
+    expect(result[2].startMin).toBe(15);
+  });
+
+  it('leaves chips above cascadeStart unchanged', () => {
+    const chips = [makeChip(8, 0, 30), makeChip(9, 0, 60), makeChip(10, 0, 30)];
+    const result = reorderChips(chips, 2, 1);
+    expect(result[0].startHour).toBe(8);
+    expect(result[0].startMin).toBe(0);
+  });
+
+  it('clamps times that would exceed 23:59', () => {
+    const chips = [makeChip(23, 30, 45), makeChip(23, 45, 60)];
+    const result = reorderChips(chips, 1, 0);
+    result.forEach(chip => {
+      expect(chip.startHour).toBeLessThanOrEqual(23);
+      expect(chip.startMin).toBeGreaterThanOrEqual(0);
+    });
   });
 });
 

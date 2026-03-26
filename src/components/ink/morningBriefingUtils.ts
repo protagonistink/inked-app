@@ -1,6 +1,6 @@
 import { format, parseISO } from 'date-fns';
 import type { BriefingContext } from '@/types/electron';
-import type { InboxItem, InkMode, MonthlyPlan, PlannedTask, ScheduleBlock, WeeklyGoal } from '@/types';
+import type { DailyRitual, InboxItem, InkMode, MonthlyPlan, PlannedTask, ScheduleBlock, WeeklyGoal } from '@/types';
 
 export interface CommitChip {
   title: string;
@@ -21,6 +21,7 @@ interface BuildBriefingContextOptions {
   inkMode?: InkMode;
   interviewStep?: number;
   interviewAnswers?: string[];
+  rituals?: DailyRitual[];
 }
 
 function normalizeTaskTitle(value: string) {
@@ -39,6 +40,7 @@ export async function buildBriefingContext({
   inkMode,
   interviewStep,
   interviewAnswers,
+  rituals,
 }: BuildBriefingContextOptions): Promise<BriefingContext> {
   let asanaTasks: BriefingContext['asanaTasks'] = [];
   try {
@@ -132,23 +134,45 @@ export async function buildBriefingContext({
     monthlyOneThing: monthlyPlan?.oneThing,
     monthlyWhy: monthlyPlan?.why,
     inkMode,
+    rituals: rituals
+      ?.filter((r) => !(r.skippedDates ?? []).includes(planningDate))
+      .map((r) => ({ title: r.title, estimateMins: r.estimateMins ?? 30 })),
   };
 }
 
 export function inferPlanningDateFromContent(content: string, fallbackDate: string): string {
   const normalized = content.toLowerCase();
+  const actualToday = format(new Date(), 'yyyy-MM-dd');
+  const today = new Date(`${actualToday}T12:00:00`);
+
   if (/\btomorrow\b/.test(normalized)) {
-    const date = new Date(`${fallbackDate}T12:00:00`);
-    date.setDate(date.getDate() + 1);
-    return format(date, 'yyyy-MM-dd');
+    const d = new Date(today);
+    d.setDate(d.getDate() + 1);
+    return format(d, 'yyyy-MM-dd');
   }
   if (/\btoday\b|\btonight\b|\bthis evening\b/.test(normalized)) {
-    return fallbackDate;
+    return actualToday;
   }
+
+  // Match day names and resolve to nearest occurrence (±3 days of today)
+  const DAY_NAMES = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+  const todayIdx = today.getDay();
+  for (let i = 0; i < DAY_NAMES.length; i++) {
+    if (new RegExp(`\\b${DAY_NAMES[i]}\\b`).test(normalized)) {
+      let diff = i - todayIdx;
+      if (diff < -3) diff += 7;
+      if (diff > 3) diff -= 7;
+      const d = new Date(today);
+      d.setDate(d.getDate() + diff);
+      return format(d, 'yyyy-MM-dd');
+    }
+  }
+
   return fallbackDate;
 }
 
 export interface ScheduleChip {
+  id: string;
   title: string;
   startHour: number;
   startMin: number;
@@ -176,7 +200,7 @@ export function parseScheduleProposal(
 
     return parsed
       .filter((item: Record<string, unknown>) => item.title && typeof item.startHour === 'number')
-      .map((item: Record<string, unknown>) => {
+      .map((item: Record<string, unknown>, i: number) => {
         const title = String(item.title);
         const normalized = normalizeTaskTitle(title);
         const exactMatch = matchableTasks.find((t) => normalizeTaskTitle(t.title) === normalized);
@@ -189,6 +213,7 @@ export function parseScheduleProposal(
         const matched = exactMatch || fuzzyMatch;
 
         return {
+          id: `chip-${i}`,
           title,
           startHour: Number(item.startHour),
           startMin: Number(item.startMin) || 0,
@@ -201,6 +226,34 @@ export function parseScheduleProposal(
   } catch {
     return [];
   }
+}
+
+export function reorderChips(chips: ScheduleChip[], fromIndex: number, toIndex: number): ScheduleChip[] {
+  if (fromIndex === toIndex) return chips;
+
+  const cascadeStart = Math.min(fromIndex, toIndex);
+  // Capture anchor from ORIGINAL array before reordering
+  const anchorMins = chips[cascadeStart].startHour * 60 + chips[cascadeStart].startMin;
+
+  // Build reordered array immutably
+  const reordered = [...chips];
+  const [moved] = reordered.splice(fromIndex, 1);
+  reordered.splice(toIndex, 0, moved);
+
+  // Cascade from cascadeStart to end; leave items above untouched
+  let cursorMins = anchorMins;
+  return reordered.map((chip, i) => {
+    if (i < cascadeStart) return chip;
+    // Clamp to prevent overflow past 23:59
+    const maxStart = 23 * 60 + 59 - chip.durationMins;
+    const clampedStart = Math.min(Math.max(cursorMins, 0), maxStart);
+    cursorMins = clampedStart + chip.durationMins;
+    return {
+      ...chip,
+      startHour: Math.floor(clampedStart / 60),
+      startMin: clampedStart % 60,
+    };
+  });
 }
 
 export function parseCommitChips(
