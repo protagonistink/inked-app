@@ -4,6 +4,22 @@ export function QuickCaptureNote() {
   const [text, setText] = useState('');
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
+  // Change 2: system color-scheme detection
+  const [isDark, setIsDark] = useState(
+    () => window.matchMedia('(prefers-color-scheme: dark)').matches
+  );
+
+  useEffect(() => {
+    const mq = window.matchMedia('(prefers-color-scheme: dark)');
+    const handler = (e: MediaQueryListEvent) => setIsDark(e.matches);
+    mq.addEventListener('change', handler);
+    return () => mq.removeEventListener('change', handler);
+  }, []);
+
+  const bgGradient = isDark
+    ? 'linear-gradient(160deg, #BAE6FD 0%, #93C5FD 100%)'
+    : 'linear-gradient(160deg, #FDE68A 0%, #F9CF58 100%)';
+
   useEffect(() => {
     // Focus when the Electron window gains focus (fires on every show)
     const onWindowFocus = () => textareaRef.current?.focus();
@@ -30,19 +46,24 @@ export function QuickCaptureNote() {
   return (
     <div
       className="h-screen flex flex-col overflow-hidden"
-      style={{ background: '#FDE68A', color: '#451a03' }}
+      style={{
+        background: bgGradient,
+        color: '#282828',
+        position: 'relative',
+        boxShadow: '0 4px 16px rgba(0,0,0,0.20), 5px 5px 0 rgba(0,0,0,0.06)',
+      }}
     >
       {/* Drag handle */}
       <div
         className="h-8 flex items-center px-3 shrink-0 cursor-default"
         style={{
           WebkitAppRegion: 'drag',
-          borderBottom: '1px solid rgba(120,53,15,0.12)',
+          borderBottom: `1px solid ${isDark ? 'rgba(30,64,175,0.15)' : 'rgba(120,53,15,0.12)'}`,
         } as React.CSSProperties}
       >
         <div className="flex gap-1.5 opacity-30">
           {[0, 1, 2].map((i) => (
-            <div key={i} className="w-2.5 h-2.5 rounded-full" style={{ background: '#78350f' }} />
+            <div key={i} className="w-2.5 h-2.5 rounded-full" style={{ background: isDark ? '#1e40af' : '#78350f' }} />
           ))}
         </div>
       </div>
@@ -60,7 +81,7 @@ export function QuickCaptureNote() {
         className="flex-1 resize-none px-4 pt-3 pb-1 text-[15px] leading-relaxed focus:outline-none"
         style={{
           background: 'transparent',
-          color: '#451a03',
+          color: '#282828',
           WebkitAppRegion: 'no-drag',
         } as React.CSSProperties}
       />
@@ -70,11 +91,29 @@ export function QuickCaptureNote() {
         className="flex justify-between items-center px-4 pb-3 shrink-0"
         style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
       >
-        <span style={{ fontSize: 11, opacity: 0.45, color: '#451a03' }}>↵ save · esc dismiss</span>
+        <span style={{ fontSize: 11, opacity: 0.45, color: '#282828' }}>↵ save · esc dismiss</span>
         {text.length > 0 && (
-          <span style={{ fontSize: 11, opacity: 0.45, color: '#451a03' }}>{text.length}/500</span>
+          <span style={{ fontSize: 11, opacity: 0.45, color: '#282828' }}>{text.length}/500</span>
         )}
       </div>
+
+      {/* Page curl — bottom-right corner lift */}
+      <div
+        style={{
+          position: 'absolute',
+          bottom: 0,
+          right: 0,
+          width: 28,
+          height: 28,
+          background: `linear-gradient(
+            225deg,
+            transparent 50%,
+            ${isDark ? 'rgba(30,64,175,0.18)' : 'rgba(0,0,0,0.10)'} 50%
+          )`,
+          borderRadius: '0 0 4px 0',
+          pointerEvents: 'none',
+        }}
+      />
     </div>
   );
 }
