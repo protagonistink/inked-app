@@ -1,3 +1,12 @@
+export type CaptureColor = 'yellow' | 'pink' | 'blue' | 'green' | 'orange' | 'lavender';
+
+export interface CaptureEntry {
+  id: string;
+  text: string;
+  color: CaptureColor;
+  createdAt: string; // ISO 8601
+}
+
 export type TaskSource = 'asana' | 'local';
 
 export interface ApiResult<T> {
@@ -246,6 +255,27 @@ export interface ChatMessage {
   role: 'user' | 'assistant';
   content: string;
   attachments?: ChatImageAttachment[];
+}
+
+export interface ChatThread {
+  id: string;
+  date: string;
+  mode: 'briefing' | 'chat' | 'eod';
+  title: string;
+  messages: ChatMessage[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ChatThreadSummary {
+  id: string;
+  date: string;
+  mode: 'briefing' | 'chat' | 'eod';
+  title: string;
+  preview: string;
+  messageCount: number;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface GCalEventContext {

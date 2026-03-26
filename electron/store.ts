@@ -55,7 +55,7 @@ const store = new Store({
       lastUpdated: new Date().toISOString(),
     },
     scratch: {
-      entries: [] as Array<{ id: string; text: string; createdAt: string }>,
+      entries: [] as Array<{ id: string; text: string; color: string; createdAt: string }>,
     },
     stripe: {
       secretKey: '',
@@ -216,8 +216,8 @@ export function registerStoreHandlers() {
         configured: Boolean(getSecure('asana.token')),
       },
       gcal: {
-        clientId: String(gcal.clientId ?? ''),
-        clientSecretConfigured: Boolean(gcal.clientSecret),
+        clientId: String(getSecure('gcal.clientId') ?? ''),
+        clientSecretConfigured: Boolean(getSecure('gcal.clientSecret')),
         calendarId: String(gcal.calendarId ?? 'primary'),
         calendarIds: Array.isArray(gcal.calendarIds) ? gcal.calendarIds : ['primary'],
         writeCalendarId: String(gcal.writeCalendarId ?? gcal.calendarId ?? 'primary'),
