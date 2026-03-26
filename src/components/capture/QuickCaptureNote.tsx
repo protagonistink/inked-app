@@ -48,7 +48,8 @@ export function QuickCaptureNote() {
       className="h-screen flex flex-col overflow-hidden"
       style={{
         background: bgGradient,
-        color: '#111111',
+        color: '#000000',
+        fontFamily: 'Optima, Candara, sans-serif',
         position: 'relative',
         boxShadow: '0 4px 16px rgba(0,0,0,0.20), 5px 5px 0 rgba(0,0,0,0.06)',
       }}
@@ -81,7 +82,7 @@ export function QuickCaptureNote() {
         className="flex-1 resize-none px-4 pt-3 pb-1 text-[15px] leading-relaxed focus:outline-none"
         style={{
           background: 'transparent',
-          color: '#111111',
+          color: '#000000',
           WebkitAppRegion: 'no-drag',
         } as React.CSSProperties}
       />
@@ -91,9 +92,9 @@ export function QuickCaptureNote() {
         className="flex justify-between items-center px-4 pb-3 shrink-0"
         style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
       >
-        <span style={{ fontSize: 11, opacity: 0.45, color: '#111111' }}>↵ save · esc dismiss</span>
+        <span style={{ fontSize: 11, opacity: 0.45, color: '#000000' }}>↵ save · esc dismiss</span>
         {text.length > 0 && (
-          <span style={{ fontSize: 11, opacity: 0.45, color: '#111111' }}>{text.length}/500</span>
+          <span style={{ fontSize: 11, opacity: 0.45, color: '#000000' }}>{text.length}/500</span>
         )}
       </div>
 
