@@ -426,7 +426,7 @@ export function UnifiedInbox({ collapsed = false }: { collapsed?: boolean }) {
   return (
     <div
       className={cn(
-        'focus-dim bg-bg column-divider flex flex-col h-full w-full pt-[58px] px-1 transition-[opacity,border-width] duration-[350ms] ease-[cubic-bezier(0.4,0,0.2,1)]',
+        'focus-dim gravity-dim bg-bg column-divider flex flex-col h-full w-full pt-[58px] px-1 transition-[opacity,border-width] duration-[350ms] ease-[cubic-bezier(0.4,0,0.2,1)]',
         collapsed && 'opacity-0 pointer-events-none overflow-hidden border-r-0'
       )}
     >

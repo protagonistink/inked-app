@@ -136,7 +136,7 @@ export function RightRail({ onOpenInk: _onOpenInk, onEndDay }: RightRailProps) {
   const expandedLedger = view === 'flow' && inboxOpen;
 
   return (
-    <aside className="w-[280px] flex-shrink-0 flex flex-col border-l border-border-subtle bg-bg-elevated overflow-y-auto select-none">
+    <aside className="gravity-dim w-[280px] flex-shrink-0 flex flex-col border-l border-border-subtle bg-bg-elevated overflow-y-auto select-none">
       <div className="px-7 pt-[74px] pb-6 flex flex-col">
         <div>
           <h3 className="flex items-center gap-2 font-serif text-[13px] uppercase tracking-[0.18em] text-text-whisper mb-4">

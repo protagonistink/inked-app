@@ -10,6 +10,7 @@ import { useSound } from '@/hooks/useSound';
 import { GoalSection } from '../GoalSection';
 import { PlanWarnings } from '../PlanWarnings';
 import { getDeadlineState } from '../shared/TaskCard';
+import { GravityPrompt } from '@/components/shared/GravityPrompt';
 
 export function TodaysFlow({ collapsed = false }: { collapsed?: boolean }) {
   const { isFocus } = useTheme();
@@ -280,6 +281,7 @@ export function TodaysFlow({ collapsed = false }: { collapsed?: boolean }) {
       </div>
 
       <div className="flex-1 overflow-y-auto px-6 py-6 flex flex-col gap-8 hide-scrollbar">
+        <GravityPrompt />
         <form onSubmit={handleSubmit} className="animate-fade-in relative group">
           <div className="absolute inset-y-0 left-4 flex items-center pointer-events-none">
             <Plus className="w-4 h-4 text-text-muted group-focus-within:text-text-primary transition-colors" />

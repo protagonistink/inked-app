@@ -10,9 +10,11 @@ import {
     Feather,
     PenLine,
     Settings,
+    Flame,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAppShell, usePlanner } from '@/context/AppContext';
+import { useGravityContext } from '@/context/GravityContext';
 import { OverlaySurface } from '../shared/OverlaySurface';
 
 interface CommandPaletteProps {
@@ -36,6 +38,7 @@ export function CommandPalette({ onOpenSettings, onOpenInk, onOpenPlot }: Comman
     const [selectedIndex, setSelectedIndex] = useState(0);
     const { setView, openInbox, closeInbox, inboxOpen, enterFocus } = useAppShell();
     const { toggleTask, committedTasks, selectedInboxId, bringForward } = usePlanner();
+    const { invokeAnarchy } = useGravityContext();
     const menuRef = useRef<HTMLDivElement>(null);
     const inputRef = useRef<HTMLInputElement>(null);
 
@@ -52,6 +55,7 @@ export function CommandPalette({ onOpenSettings, onOpenInk, onOpenPlot }: Comman
         { id: 'action-done', title: 'Mark active task done', icon: CheckCircle2, category: 'Action', action: () => { const active = committedTasks.find(t => t.active && t.status !== 'done'); if (active) void toggleTask(active.id); } },
         { id: 'action-bring-forward', title: 'Bring forward from inbox', icon: ArrowRight, category: 'Action', action: () => { if (selectedInboxId) bringForward(selectedInboxId); } },
         { id: 'action-start-focus', title: 'Start focus block', icon: Play, category: 'Action', action: () => { const active = committedTasks.find(t => t.active && t.status !== 'done'); if (active) { enterFocus(active.id); } } },
+        { id: 'action-anarchy', title: 'Anarchy', icon: Flame, category: 'Action', action: () => { invokeAnarchy(); } },
     ];
 
     const filteredCommands = commands.filter(cmd =>
