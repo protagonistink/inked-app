@@ -4,6 +4,7 @@ import type { PomodoroState } from '@/types';
 import { cn } from '@/lib/utils';
 import { useAppShell, usePlanner } from '@/context/AppContext';
 import { useTheme } from '@/context/ThemeContext';
+import { useGravityContext } from '@/context/GravityContext';
 
 interface TimeboxDecisionState {
   taskId: string;
@@ -20,6 +21,7 @@ export function PomodoroTimer() {
   const { setView } = useAppShell();
   const { logFocusSession, plannedTasks, setActiveTask, toggleTask } = usePlanner();
   const { enterFocusMode, exitFocusMode } = useTheme();
+  const { active: gravityActive, staleGoalId, releaseGravity } = useGravityContext();
   const [state, setState] = useState<PomodoroState>({
     isRunning: false,
     isPaused: false,
@@ -93,11 +95,22 @@ export function PomodoroTimer() {
               : null
         );
 
+        // Release gravity after 5 minutes on a stale-intention task
+        if (gravityActive && nextState.isRunning && !nextState.isBreak && nextState.currentTaskId) {
+          const elapsed = nextState.totalTime - nextState.timeRemaining;
+          if (elapsed >= 300) {
+            const task = plannedTasks.find((t) => t.id === nextState.currentTaskId);
+            if (task?.weeklyGoalId === staleGoalId) {
+              releaseGravity();
+            }
+          }
+        }
+
         return nextState;
       });
     });
     return unsubscribe;
-  }, [logFocusSession, plannedTasks, setActiveTask, setView]);
+  }, [logFocusSession, plannedTasks, setActiveTask, setView, gravityActive, staleGoalId, releaseGravity]);
 
   useEffect(() => {
     if (state.isRunning) {
