@@ -6,6 +6,7 @@ import { getEmptyImage } from 'react-dnd-html5-backend';
 import { cn, formatRoundedHours, roundToQuarterHour } from '@/lib/utils';
 import { useTheme } from '@/context/ThemeContext';
 import { usePlanner } from '@/context/AppContext';
+import { useGravityContext } from '@/context/GravityContext';
 import { DragTypes, type DragItem } from '@/hooks/useDragDrop';
 import { useSound } from '@/hooks/useSound';
 import { resolveGoalColor, withAlpha } from '@/lib/goalColors';
@@ -81,6 +82,8 @@ export function TaskCard({
   const { isLight, isFocus } = useTheme();
   const { toggleTask, setActiveTask, releaseTask, updateTaskEstimate } = usePlanner();
   const { play } = useSound();
+  const { active: gravityActive, staleGoalId } = useGravityContext();
+  const isGravityDimmed = gravityActive && task.weeklyGoalId !== staleGoalId;
   const plannedHours = formatRoundedHours(task.estimateMins, true);
   const actualHours = formatRoundedHours(actualMins, true);
   const varianceMinutes = roundToQuarterHour(actualMins) - roundToQuarterHour(task.estimateMins);
@@ -182,6 +185,7 @@ export function TaskCard({
       data-task-id={task.id}
       className={cn(
         'animate-fade-in group relative border-b border-ink/5 border-l-2 transition-all duration-300 select-none',
+        isGravityDimmed && 'gravity-dim',
         task.active && 'border-accent-warm/20',
         isDragging && 'opacity-30 scale-[0.98]',
         isNestOver && canNest && 'ring-1 ring-accent-warm/40 ring-inset rounded-lg',
