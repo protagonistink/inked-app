@@ -1,6 +1,8 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { usePlanner } from '@/context/AppContext';
+import { useTheme } from '@/context/ThemeContext';
 import type { PomodoroState } from '@/types';
+import { cn } from '@/lib/utils';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -16,7 +18,7 @@ const DURATION_OPTIONS = [
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
-function formatTimerDisplay(seconds: number): string {
+function formatTimer(seconds: number): string {
   const m = Math.floor(seconds / 60);
   const s = seconds % 60;
   return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
@@ -31,823 +33,350 @@ function formatElapsed(seconds: number): string {
   return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
 }
 
-function formatTimeUTC(): string {
-  return new Date()
-    .toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' });
-}
+// ─── Aperture Rings ───────────────────────────────────────────────────────────
+// SVG handles only the ring geometry + progress arc.
+// Timer text is overlaid as a React element for full design-system control.
 
-function shortId(taskId: string): string {
-  // Turn task ID into "ARCH-0992-X" style session code
-  const hash = taskId.replace(/\D/g, '').slice(-4).padStart(4, '0');
-  const suffix = taskId.slice(-1).toUpperCase();
-  return `ARCH-${hash}-${suffix}`;
-}
-
-// ─── Sub-components ───────────────────────────────────────────────────────────
-
-function ChromeHeader() {
-  return (
-    <div
-      className="absolute top-0 left-0 right-0 z-20 flex items-center justify-between px-8"
-      style={{ height: 65 }}
-    >
-      <span
-        style={{
-          fontFamily: 'Satoshi, sans-serif',
-          fontSize: 22,
-          fontWeight: 400,
-          color: 'rgba(243,243,245,0.9)',
-          letterSpacing: '0.04em',
-        }}
-      >
-        CHRONOGRAPH
-      </span>
-      <nav className="flex items-center gap-6">
-        {['FOCUS', 'LOG', 'GOALS', 'PLAN'].map((label, i) => (
-          <span
-            key={label}
-            style={{
-              fontFamily: 'JetBrains Mono, monospace',
-              fontSize: 9,
-              fontWeight: 400,
-              letterSpacing: '0.16em',
-              color: i === 0 ? 'rgba(200,60,47,0.8)' : 'rgba(243,243,245,0.25)',
-              cursor: 'default',
-            }}
-          >
-            {label}
-          </span>
-        ))}
-      </nav>
-    </div>
-  );
-}
-
-interface CornerDataProps {
-  label: string;
-  value: string;
-  position: 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right';
-}
-
-function CornerData({ label, value, position }: CornerDataProps) {
-  const posClass = {
-    'top-left': 'top-20 left-8',
-    'top-right': 'top-20 right-8 text-right',
-    'bottom-left': 'bottom-8 left-8',
-    'bottom-right': 'bottom-8 right-8 text-right',
-  }[position];
-
-  return (
-    <div className={`absolute ${posClass}`} style={{ lineHeight: 1.6 }}>
-      <div
-        style={{
-          fontFamily: 'JetBrains Mono, monospace',
-          fontSize: 9,
-          fontWeight: 500,
-          letterSpacing: '0.14em',
-          color: 'rgba(243,243,245,0.22)',
-        }}
-      >
-        {label}
-      </div>
-      <div
-        style={{
-          fontFamily: 'JetBrains Mono, monospace',
-          fontSize: 13,
-          fontWeight: 500,
-          letterSpacing: '0.06em',
-          color: 'rgba(243,243,245,0.55)',
-        }}
-      >
-        {value}
-      </div>
-    </div>
-  );
-}
-
-// ─── The Aperture Gauge ───────────────────────────────────────────────────────
-
-interface ApertureGaugeProps {
-  progress: number;
-  timerDisplay: string;
-  taskTitle: string;
-  goalTitle?: string;
-}
-
-function ApertureGauge({ progress, timerDisplay, taskTitle, goalTitle }: ApertureGaugeProps) {
+function ApertureRings({ progress }: { progress: number }) {
   const cx = 300;
   const cy = 300;
-  // Outer rings (purely structural/ambient)
-  const outerRings = [280, 245, 208, 172];
-  // Inner active arc
-  const arcR = 132;
+  const outerRings = [276, 241, 206, 171];
+  const arcR = 136;
   const circumference = 2 * Math.PI * arcR;
   const dashOffset = circumference * (1 - Math.min(Math.max(progress, 0), 1));
+  const ringStroke = 'rgba(255,255,255,0.04)'; // ≈ --color-border-subtle
 
   return (
     <svg
       viewBox="0 0 600 600"
-      style={{ width: '100%', height: '100%', maxWidth: 600, maxHeight: 600 }}
+      className="absolute inset-0 w-full h-full"
+      aria-hidden="true"
     >
       {/* Structural crosshairs */}
-      <line x1="0" y1="300" x2="600" y2="300" stroke="rgba(255,255,255,0.035)" strokeWidth="1" />
-      <line x1="300" y1="0" x2="300" y2="600" stroke="rgba(255,255,255,0.035)" strokeWidth="1" />
+      <line x1="0" y1="300" x2="600" y2="300" stroke={ringStroke} strokeWidth="1" />
+      <line x1="300" y1="0" x2="300" y2="600" stroke={ringStroke} strokeWidth="1" />
 
-      {/* Outer concentric rings */}
+      {/* Concentric rings */}
       {outerRings.map((r) => (
-        <circle
-          key={r}
-          cx={cx}
-          cy={cy}
-          r={r}
-          fill="none"
-          stroke="rgba(255,255,255,0.04)"
-          strokeWidth="1"
-        />
+        <circle key={r} cx={cx} cy={cy} r={r} fill="none" stroke={ringStroke} strokeWidth="1" />
       ))}
 
-      {/* Ghost task title in middle ring band */}
-      <text
-        x="300"
-        y="252"
-        textAnchor="middle"
-        fill="rgba(255,255,255,0.07)"
-        fontSize="20"
-        fontFamily="Satoshi, -apple-system, sans-serif"
-        fontWeight="300"
-        letterSpacing="1"
-      >
-        {taskTitle}
-      </text>
-      {goalTitle && (
-        <text
-          x="300"
-          y="278"
-          textAnchor="middle"
-          fill="rgba(255,255,255,0.045)"
-          fontSize="13"
-          fontFamily="Satoshi, -apple-system, sans-serif"
-          fontWeight="300"
-          letterSpacing="0.5"
-        >
-          {goalTitle}
-        </text>
-      )}
-
-      {/* Inner arc track */}
+      {/* Arc track */}
       <circle
         cx={cx}
         cy={cy}
         r={arcR}
         fill="none"
         stroke="rgba(255,255,255,0.05)"
-        strokeWidth="1.5"
+        strokeWidth="1"
       />
 
-      {/* Active progress arc */}
+      {/* Progress arc — uses CSS variable so it honours any future theme changes */}
       <circle
         cx={cx}
         cy={cy}
         r={arcR}
         fill="none"
-        stroke="rgba(200,60,47,0.8)"
-        strokeWidth="2"
+        strokeWidth="1.5"
         strokeLinecap="round"
         strokeDasharray={circumference}
         strokeDashoffset={dashOffset}
         transform={`rotate(-90 ${cx} ${cy})`}
-        style={{ transition: 'stroke-dashoffset 1s linear' }}
+        style={{
+          stroke: 'var(--color-accent-warm)',
+          opacity: 0.75,
+          transition: 'stroke-dashoffset 1s linear',
+        }}
       />
-
-      {/* Center: status label */}
-      <text
-        x="300"
-        y="288"
-        textAnchor="middle"
-        fill="rgba(200,60,47,0.75)"
-        fontSize="9"
-        letterSpacing="4"
-        fontFamily="JetBrains Mono, monospace"
-        fontWeight="700"
-      >
-        FOCUSING
-      </text>
-
-      {/* Center: timer digits */}
-      <text
-        x="300"
-        y="340"
-        textAnchor="middle"
-        fill="rgba(243,243,245,0.95)"
-        fontSize="72"
-        fontFamily="Satoshi, -apple-system, sans-serif"
-        fontWeight="300"
-        letterSpacing="-1"
-      >
-        {timerDisplay}
-      </text>
     </svg>
   );
 }
 
-// ─── Phase screens ────────────────────────────────────────────────────────────
+// ─── Initiation ───────────────────────────────────────────────────────────────
 
-interface InitiationScreenProps {
+interface InitiationProps {
   taskTitle: string;
   selectedDuration: number;
   onSelectDuration: (v: number) => void;
-  onCommence: () => void;
-  taskId: string;
+  onBegin: () => void;
 }
 
 function InitiationScreen({
   taskTitle,
   selectedDuration,
   onSelectDuration,
-  onCommence,
-  taskId,
-}: InitiationScreenProps) {
+  onBegin,
+}: InitiationProps) {
   return (
-    <>
-      {/* Ambient corner data */}
-      <div
-        className="absolute bottom-8 left-8"
-        style={{ lineHeight: 1.8 }}
+    <div className="absolute inset-0 flex flex-col items-center justify-center gap-7 px-12 text-center">
+      {/* Pre-label */}
+      <p className="font-mono text-[10px] tracking-[0.22em] uppercase text-text-muted select-none">
+        your intention
+      </p>
+
+      {/* Task title — the hero moment of initiation. Cormorant italic reads like
+          a manuscript title: weighty, literary, personal. */}
+      <h1
+        className="font-serif italic text-text-emphasis leading-[1.05] max-w-2xl"
+        style={{ fontSize: 'clamp(40px, 6.5vw, 88px)' }}
       >
-        <div style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 8, color: 'rgba(243,243,245,0.18)', letterSpacing: '0.1em' }}>
-          LAT: 40.7128° N / LON: 74.0060° W
-        </div>
-        <div style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 8, color: 'rgba(243,243,245,0.18)', letterSpacing: '0.1em' }}>
-          APERTURE VER: 2.0.4 · PROCESS: {shortId(taskId)}
+        {taskTitle}
+      </h1>
+
+      {/* Duration selector */}
+      <div className="flex flex-col items-center gap-3 mt-1">
+        <p className="font-mono text-[9px] tracking-[0.2em] uppercase text-text-whisper select-none">
+          duration
+        </p>
+        <div className="flex items-center gap-2">
+          {DURATION_OPTIONS.map(({ label, value }) => {
+            const sel = selectedDuration === value;
+            return (
+              <button
+                key={value}
+                onClick={() => onSelectDuration(value)}
+                className={cn(
+                  'font-mono text-[9px] tracking-[0.1em] px-2.5 py-1.5 rounded-[2px] border transition-all duration-150 cursor-pointer',
+                  sel
+                    ? 'border-accent-warm/50 bg-accent-warm/10 text-accent-warm'
+                    : 'border-border text-text-muted hover:border-border-hover hover:text-text-secondary'
+                )}
+              >
+                {label}
+              </button>
+            );
+          })}
         </div>
       </div>
 
-      {/* Center body */}
-      <div
-        className="absolute inset-0 flex flex-col items-center justify-center"
-        style={{ paddingTop: 65 }}
+      {/* Begin — rust-accented, quiet. Earns attention without demanding it. */}
+      <button
+        onClick={onBegin}
+        className="font-mono text-[11px] tracking-[0.22em] uppercase border border-accent-warm/30 text-accent-warm/70 hover:border-accent-warm/60 hover:text-accent-warm hover:bg-accent-warm/5 px-12 py-3 rounded-[2px] transition-all duration-150 cursor-pointer mt-1"
       >
-        <div className="flex flex-col items-center" style={{ gap: 24, maxWidth: 640, width: '100%', padding: '0 48px' }}>
-          {/* System label */}
-          <div
-            style={{
-              fontFamily: 'JetBrains Mono, monospace',
-              fontSize: 10,
-              fontWeight: 500,
-              color: 'rgba(243,243,245,0.35)',
-              letterSpacing: '0.12em',
-            }}
-          >
-            System.Initiation_Sequence
-          </div>
+        Begin
+      </button>
 
-          {/* Intention prompt */}
-          <div
-            style={{
-              fontFamily: 'JetBrains Mono, monospace',
-              fontSize: 11,
-              fontWeight: 400,
-              color: 'rgba(243,243,245,0.4)',
-              letterSpacing: '0.08em',
-            }}
-          >
-            What is the single intention?
-          </div>
-
-          {/* Task title — large hero */}
-          <div
-            style={{
-              fontFamily: 'Satoshi, -apple-system, sans-serif',
-              fontSize: 'clamp(40px, 8vw, 96px)',
-              fontWeight: 300,
-              color: 'rgba(243,243,245,0.92)',
-              lineHeight: 1.05,
-              textAlign: 'center',
-              letterSpacing: '-0.02em',
-            }}
-          >
-            {taskTitle}
-          </div>
-
-          {/* Duration selector */}
-          <div className="flex flex-col items-center" style={{ gap: 12, marginTop: 8 }}>
-            <div
-              style={{
-                fontFamily: 'JetBrains Mono, monospace',
-                fontSize: 9,
-                fontWeight: 500,
-                color: 'rgba(243,243,245,0.3)',
-                letterSpacing: '0.18em',
-              }}
-            >
-              DURATION
-            </div>
-            {/* Current value display */}
-            <div style={{ display: 'flex', alignItems: 'baseline', gap: 4 }}>
-              <span
-                style={{
-                  fontFamily: 'Satoshi, -apple-system, sans-serif',
-                  fontSize: 28,
-                  fontWeight: 300,
-                  color: 'rgba(243,243,245,0.85)',
-                }}
-              >
-                {selectedDuration}
-              </span>
-              <span
-                style={{
-                  fontFamily: 'Satoshi, -apple-system, sans-serif',
-                  fontSize: 13,
-                  fontWeight: 300,
-                  color: 'rgba(243,243,245,0.4)',
-                }}
-              >
-                min
-              </span>
-            </div>
-            {/* Duration pills */}
-            <div className="flex items-center" style={{ gap: 8 }}>
-              {DURATION_OPTIONS.map(({ label, value }) => {
-                const isSelected = selectedDuration === value;
-                return (
-                  <button
-                    key={value}
-                    onClick={() => onSelectDuration(value)}
-                    style={{
-                      fontFamily: 'JetBrains Mono, monospace',
-                      fontSize: 9,
-                      fontWeight: 500,
-                      letterSpacing: '0.1em',
-                      padding: '5px 10px',
-                      borderRadius: 2,
-                      border: isSelected
-                        ? '1px solid rgba(200,60,47,0.6)'
-                        : '1px solid rgba(255,255,255,0.08)',
-                      background: isSelected ? 'rgba(200,60,47,0.08)' : 'transparent',
-                      color: isSelected ? 'rgba(200,60,47,0.9)' : 'rgba(243,243,245,0.35)',
-                      cursor: 'pointer',
-                      transition: 'all 0.15s ease',
-                    }}
-                  >
-                    {label}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-
-          {/* Commence button */}
-          <button
-            onClick={onCommence}
-            style={{
-              marginTop: 16,
-              width: '100%',
-              maxWidth: 280,
-              padding: '13px 0',
-              border: '1px solid rgba(200,60,47,0.4)',
-              borderRadius: 2,
-              background: 'transparent',
-              color: 'rgba(200,60,47,0.9)',
-              fontFamily: 'JetBrains Mono, monospace',
-              fontSize: 11,
-              fontWeight: 700,
-              letterSpacing: '0.2em',
-              cursor: 'pointer',
-              transition: 'all 0.15s ease',
-            }}
-            onMouseEnter={(e) => {
-              (e.currentTarget as HTMLButtonElement).style.background = 'rgba(200,60,47,0.06)';
-              (e.currentTarget as HTMLButtonElement).style.borderColor = 'rgba(200,60,47,0.7)';
-            }}
-            onMouseLeave={(e) => {
-              (e.currentTarget as HTMLButtonElement).style.background = 'transparent';
-              (e.currentTarget as HTMLButtonElement).style.borderColor = 'rgba(200,60,47,0.4)';
-            }}
-          >
-            COMMENCE
-          </button>
-
-          {/* ESC hint */}
-          <div
-            style={{
-              fontFamily: 'JetBrains Mono, monospace',
-              fontSize: 9,
-              color: 'rgba(243,243,245,0.2)',
-              letterSpacing: '0.14em',
-              marginTop: 4,
-            }}
-          >
-            ESC to cancel
-          </div>
-        </div>
-      </div>
-    </>
+      <p className="font-mono text-[9px] tracking-[0.14em] text-text-whisper select-none">
+        esc to cancel
+      </p>
+    </div>
   );
 }
 
-interface ActiveScreenProps {
+// ─── Active ───────────────────────────────────────────────────────────────────
+
+interface ActiveProps {
   timerState: PomodoroState | null;
   elapsedSeconds: number;
-  taskId: string;
   taskTitle: string;
   goalTitle?: string;
   taskIndex: number;
   totalTasks: number;
-  onConclude: () => void;
+  onEnd: () => void;
 }
 
 function ActiveScreen({
   timerState,
   elapsedSeconds,
-  taskId,
   taskTitle,
   goalTitle,
   taskIndex,
   totalTasks,
-  onConclude,
-}: ActiveScreenProps) {
+  onEnd,
+}: ActiveProps) {
   const progress =
     timerState && timerState.totalTime > 0
       ? 1 - timerState.timeRemaining / timerState.totalTime
       : 0;
-  const timerDisplay = timerState ? formatTimerDisplay(timerState.timeRemaining) : '00:00';
+  const timerDisplay = timerState ? formatTimer(timerState.timeRemaining) : '00:00';
 
   return (
     <>
-      {/* Corner anchors */}
-      <CornerData
-        label="SESSION.ID"
-        value={`${taskIndex}/${totalTasks}`}
-        position="top-left"
-      />
-      <CornerData
-        label="ELAPSED"
-        value={formatElapsed(elapsedSeconds)}
-        position="top-right"
-      />
-      <CornerData
-        label="SESSION"
-        value={shortId(taskId)}
-        position="bottom-left"
-      />
-      <CornerData
-        label="PHASE"
-        value="DEEP WORK"
-        position="bottom-right"
-      />
+      {/* Corner anchors — real data only, minimal presence */}
+      <div className="absolute top-7 left-8 leading-snug select-none">
+        <p className="font-mono text-[9px] tracking-[0.14em] uppercase text-text-whisper">Task</p>
+        <p className="font-mono text-[12px] tracking-[0.04em] text-text-muted">
+          {taskIndex} of {totalTasks}
+        </p>
+      </div>
 
-      {/* Aperture gauge — centered, fills available space */}
-      <div
-        className="absolute inset-0 flex items-center justify-center"
-        style={{ paddingTop: 65 }}
-      >
-        <div style={{ width: 'min(600px, 80vh)', height: 'min(600px, 80vh)' }}>
-          <ApertureGauge
-            progress={progress}
-            timerDisplay={timerDisplay}
-            taskTitle={taskTitle}
-            goalTitle={goalTitle}
-          />
+      <div className="absolute top-7 right-8 text-right leading-snug select-none">
+        <p className="font-mono text-[9px] tracking-[0.14em] uppercase text-text-whisper">
+          Elapsed
+        </p>
+        <p className="font-mono text-[12px] tracking-[0.04em] text-text-muted tabular-nums">
+          {formatElapsed(elapsedSeconds)}
+        </p>
+      </div>
+
+      {/* Aperture gauge — the rhythm of the session */}
+      <div className="absolute inset-0 flex items-center justify-center">
+        <div
+          className="relative"
+          style={{ width: 'min(560px, 76vh)', height: 'min(560px, 76vh)' }}
+        >
+          <ApertureRings progress={progress} />
+
+          {/* Ghost label in the middle ring band — the intention, barely present */}
+          <div
+            className="absolute left-0 right-0 flex justify-center pointer-events-none select-none"
+            style={{ top: '41%' }}
+          >
+            <span
+              className="font-serif italic text-text-emphasis text-center leading-snug"
+              style={{
+                fontSize: 15,
+                opacity: 0.1,
+                maxWidth: '55%',
+                display: 'block',
+              }}
+            >
+              {goalTitle ?? taskTitle}
+            </span>
+          </div>
+
+          {/* Timer — the center of everything */}
+          <div className="absolute inset-0 flex flex-col items-center justify-center gap-1.5 select-none">
+            <span className="font-mono text-[9px] tracking-[0.3em] uppercase text-accent-warm/60">
+              focusing
+            </span>
+            <span
+              className="font-mono font-light text-text-emphasis tabular-nums leading-none"
+              style={{ fontSize: 'clamp(48px, 7.5vw, 72px)' }}
+            >
+              {timerDisplay}
+            </span>
+          </div>
         </div>
       </div>
 
-      {/* Stop session button — bottom center */}
-      <button
-        onClick={onConclude}
-        className="absolute bottom-8 left-1/2 -translate-x-1/2"
-        style={{
-          fontFamily: 'JetBrains Mono, monospace',
-          fontSize: 9,
-          fontWeight: 400,
-          letterSpacing: '0.16em',
-          color: 'rgba(243,243,245,0.2)',
-          background: 'transparent',
-          border: 'none',
-          cursor: 'pointer',
-          padding: '6px 12px',
-          transition: 'color 0.15s ease',
-        }}
-        onMouseEnter={(e) => {
-          (e.currentTarget as HTMLButtonElement).style.color = 'rgba(243,243,245,0.5)';
-        }}
-        onMouseLeave={(e) => {
-          (e.currentTarget as HTMLButtonElement).style.color = 'rgba(243,243,245,0.2)';
-        }}
-      >
-        CONCLUDE SESSION
-      </button>
+      {/* Bottom affordances — whisper-quiet until needed */}
+      <div className="absolute bottom-7 left-0 right-0 flex justify-center items-center gap-5 select-none">
+        <p className="font-mono text-[9px] tracking-[0.12em] text-text-whisper">space to pause</p>
+        <span className="text-text-whisper" aria-hidden>·</span>
+        <button
+          onClick={onEnd}
+          className="font-mono text-[9px] tracking-[0.12em] text-text-whisper hover:text-text-muted transition-colors duration-150 cursor-pointer"
+        >
+          end session
+        </button>
+      </div>
     </>
   );
 }
 
-interface PausedScreenProps {
-  taskId: string;
+// ─── Paused ───────────────────────────────────────────────────────────────────
+
+interface PausedProps {
   elapsedSeconds: number;
   goalTitle?: string;
   onResume: () => void;
 }
 
-function PausedScreen({ taskId, elapsedSeconds, goalTitle, onResume }: PausedScreenProps) {
+function PausedScreen({ elapsedSeconds, goalTitle, onResume }: PausedProps) {
   return (
-    <>
-      {/* Corner micro-context */}
-      <CornerData label="SESSION ID" value={shortId(taskId)} position="top-left" />
-      <CornerData label="ELAPSED" value={formatElapsed(elapsedSeconds)} position="top-right" />
-      <CornerData label="FOCUS DEPTH" value="Deep Work / Phase II" position="bottom-left" />
+    <div className="absolute inset-0 flex flex-col items-center justify-center gap-6 text-center px-12">
+      {/* "Paused." — Cormorant italic. Lowercase with period.
+          This is an editorial pause, not a system halt. */}
+      <h1
+        className="font-serif italic text-text-emphasis leading-none select-none"
+        style={{ fontSize: 'clamp(72px, 12vw, 128px)' }}
+      >
+        Paused.
+      </h1>
+
+      {/* Context */}
+      <p className="font-mono text-[11px] tracking-[0.14em] text-text-muted tabular-nums">
+        {formatElapsed(elapsedSeconds)} elapsed
+      </p>
+
       {goalTitle && (
-        <CornerData label="TARGET" value={goalTitle} position="bottom-right" />
+        <p className="font-serif italic text-text-secondary text-[16px] select-none">
+          {goalTitle}
+        </p>
       )}
 
-      {/* Center: PAUSED typographic statement */}
-      <div
-        className="absolute inset-0 flex flex-col items-center justify-center"
-        style={{ paddingTop: 65 }}
+      {/* Resume — plain, unaccented. The rust stays in reserve for Begin. */}
+      <button
+        onClick={onResume}
+        className="font-mono text-[11px] tracking-[0.22em] uppercase border border-border hover:border-border-hover text-text-muted hover:text-text-primary px-10 py-3 rounded-[2px] transition-all duration-150 cursor-pointer mt-2"
       >
-        <div
-          style={{
-            fontFamily: 'Satoshi, -apple-system, sans-serif',
-            fontSize: 'clamp(80px, 14vw, 160px)',
-            fontWeight: 300,
-            color: 'rgba(243,243,245,0.88)',
-            letterSpacing: '0.08em',
-            lineHeight: 1,
-            userSelect: 'none',
-          }}
-        >
-          PAUSED
-        </div>
-        <div
-          style={{
-            marginTop: 16,
-            fontFamily: 'JetBrains Mono, monospace',
-            fontSize: 10,
-            fontWeight: 400,
-            color: 'rgba(243,243,245,0.3)',
-            letterSpacing: '0.16em',
-          }}
-        >
-          System on standby
-        </div>
+        Resume
+      </button>
 
-        <button
-          onClick={onResume}
-          style={{
-            marginTop: 40,
-            width: 240,
-            padding: '13px 0',
-            border: '1px solid rgba(255,255,255,0.12)',
-            borderRadius: 2,
-            background: 'transparent',
-            color: 'rgba(243,243,245,0.7)',
-            fontFamily: 'JetBrains Mono, monospace',
-            fontSize: 11,
-            fontWeight: 700,
-            letterSpacing: '0.2em',
-            cursor: 'pointer',
-            transition: 'all 0.15s ease',
-          }}
-          onMouseEnter={(e) => {
-            (e.currentTarget as HTMLButtonElement).style.borderColor = 'rgba(255,255,255,0.25)';
-            (e.currentTarget as HTMLButtonElement).style.color = 'rgba(243,243,245,0.95)';
-          }}
-          onMouseLeave={(e) => {
-            (e.currentTarget as HTMLButtonElement).style.borderColor = 'rgba(255,255,255,0.12)';
-            (e.currentTarget as HTMLButtonElement).style.color = 'rgba(243,243,245,0.7)';
-          }}
-        >
-          RESUME
-        </button>
-      </div>
-    </>
+      <p className="font-mono text-[9px] tracking-[0.14em] text-text-whisper select-none">
+        space to resume · esc to exit
+      </p>
+    </div>
   );
 }
 
-interface ConcludedScreenProps {
+// ─── Concluded ────────────────────────────────────────────────────────────────
+
+interface ConcludedProps {
   elapsedSeconds: number;
   taskTitle: string;
   taskDone: boolean;
-  concludedAtRef: React.RefObject<string>;
   onExit: () => void;
 }
 
-function ConcludedScreen({
-  elapsedSeconds,
-  taskTitle,
-  taskDone,
-  concludedAtRef,
-  onExit,
-}: ConcludedScreenProps) {
+function ConcludedScreen({ elapsedSeconds, taskTitle, taskDone, onExit }: ConcludedProps) {
   const elapsedMins = Math.floor(elapsedSeconds / 60);
   const elapsedSecs = elapsedSeconds % 60;
 
   return (
-    <>
-      {/* Bottom geographic context */}
-      <div
-        className="absolute bottom-8 left-8"
-        style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 8, color: 'rgba(243,243,245,0.18)', letterSpacing: '0.1em' }}
+    <div className="absolute inset-0 flex flex-col items-center justify-center gap-8 text-center px-12">
+      {/* "Done." — definitive. Cormorant without italic here:
+          closing statement, not a feeling. */}
+      <h1
+        className="font-serif text-text-emphasis leading-none select-none"
+        style={{ fontSize: 'clamp(72px, 10vw, 112px)' }}
       >
-        LAT: 40.7128 N / LON: 74.0060 W
+        Done.
+      </h1>
+
+      {/* Duration stat — the only number that matters */}
+      <div className="flex items-baseline gap-1.5 select-none">
+        <span
+          className="font-display font-light text-text-emphasis tabular-nums leading-none"
+          style={{ fontSize: 52 }}
+        >
+          {String(elapsedMins).padStart(2, '0')}
+        </span>
+        <span className="font-display font-light text-text-muted" style={{ fontSize: 18 }}>m</span>
+        <span
+          className="font-display font-light text-text-emphasis tabular-nums leading-none"
+          style={{ fontSize: 52 }}
+        >
+          {String(elapsedSecs).padStart(2, '0')}
+        </span>
+        <span className="font-display font-light text-text-muted" style={{ fontSize: 18 }}>s</span>
       </div>
 
-      {/* Center concluded content */}
-      <div
-        className="absolute inset-0 flex flex-col items-center justify-center"
-        style={{ paddingTop: 65, padding: '65px 64px 48px' }}
-      >
-        {/* Session terminated badge */}
-        <div
-          style={{
-            fontFamily: 'JetBrains Mono, monospace',
-            fontSize: 9,
-            fontWeight: 400,
-            letterSpacing: '0.18em',
-            color: 'rgba(243,243,245,0.35)',
-            border: '1px solid rgba(255,255,255,0.08)',
-            padding: '4px 10px',
-            borderRadius: 2,
-            marginBottom: 24,
-          }}
+      {/* Task context */}
+      <div className="flex flex-col items-center gap-2">
+        <p className="font-serif italic text-text-secondary text-[17px] max-w-md leading-snug select-none">
+          {taskTitle}
+        </p>
+        <p
+          className={cn(
+            'font-mono text-[9px] tracking-[0.2em] uppercase',
+            taskDone ? 'text-accent-warm/70' : 'text-text-whisper'
+          )}
         >
-          SESSION_TERMINATED
-        </div>
-
-        {/* "Concluded." hero */}
-        <div
-          style={{
-            fontFamily: 'Satoshi, -apple-system, sans-serif',
-            fontSize: 'clamp(60px, 9vw, 96px)',
-            fontWeight: 400,
-            color: 'rgba(243,243,245,0.92)',
-            letterSpacing: '-0.02em',
-            lineHeight: 1,
-          }}
-        >
-          Concluded.
-        </div>
-
-        {/* Verification line */}
-        <div
-          style={{
-            marginTop: 20,
-            fontFamily: 'JetBrains Mono, monospace',
-            fontSize: 10,
-            fontWeight: 400,
-            color: 'rgba(243,243,245,0.28)',
-            letterSpacing: '0.04em',
-            textAlign: 'center',
-            maxWidth: 520,
-            lineHeight: 1.6,
-          }}
-        >
-          DATA INTEGRITY VERIFIED. TEMPORAL LEDGER UPDATED AT {concludedAtRef.current} UTC.
-          <br />
-          ALL PARAMETERS RECORDED WITHIN ARCHITECTURAL BOUNDARIES.
-        </div>
-
-        {/* Stats row */}
-        <div
-          style={{
-            marginTop: 48,
-            display: 'flex',
-            gap: 64,
-            alignItems: 'flex-start',
-          }}
-        >
-          {/* 01 / DURATION */}
-          <div className="flex flex-col items-center" style={{ gap: 6 }}>
-            <div
-              style={{
-                fontFamily: 'JetBrains Mono, monospace',
-                fontSize: 9,
-                fontWeight: 400,
-                color: 'rgba(243,243,245,0.3)',
-                letterSpacing: '0.14em',
-              }}
-            >
-              01 / DURATION
-            </div>
-            <div style={{ display: 'flex', alignItems: 'baseline', gap: 4 }}>
-              <span
-                style={{
-                  fontFamily: 'Satoshi, -apple-system, sans-serif',
-                  fontSize: 56,
-                  fontWeight: 300,
-                  color: 'rgba(243,243,245,0.88)',
-                  lineHeight: 1,
-                }}
-              >
-                {String(elapsedMins).padStart(2, '0')}
-              </span>
-              <span style={{ fontFamily: 'Satoshi, sans-serif', fontSize: 18, fontWeight: 300, color: 'rgba(243,243,245,0.4)' }}>M</span>
-              <span style={{ fontFamily: 'Satoshi, sans-serif', fontSize: 56, fontWeight: 300, color: 'rgba(243,243,245,0.88)', lineHeight: 1 }}>
-                {String(elapsedSecs).padStart(2, '0')}
-              </span>
-              <span style={{ fontFamily: 'Satoshi, sans-serif', fontSize: 18, fontWeight: 300, color: 'rgba(243,243,245,0.4)' }}>S</span>
-            </div>
-          </div>
-
-          {/* Divider */}
-          <div style={{ width: 1, height: 80, background: 'rgba(255,255,255,0.06)', alignSelf: 'center' }} />
-
-          {/* 02 / EFFICIENCY */}
-          <div className="flex flex-col items-center" style={{ gap: 6 }}>
-            <div
-              style={{
-                fontFamily: 'JetBrains Mono, monospace',
-                fontSize: 9,
-                fontWeight: 400,
-                color: 'rgba(243,243,245,0.3)',
-                letterSpacing: '0.14em',
-              }}
-            >
-              02 / EFFICIENCY
-            </div>
-            <span
-              style={{
-                fontFamily: 'Satoshi, -apple-system, sans-serif',
-                fontSize: 56,
-                fontWeight: 300,
-                color: 'rgba(243,243,245,0.88)',
-                lineHeight: 1,
-              }}
-            >
-              100%
-            </span>
-          </div>
-
-          {/* Divider */}
-          <div style={{ width: 1, height: 80, background: 'rgba(255,255,255,0.06)', alignSelf: 'center' }} />
-
-          {/* 03 / PROGRESS */}
-          <div className="flex flex-col items-center" style={{ gap: 6 }}>
-            <div
-              style={{
-                fontFamily: 'JetBrains Mono, monospace',
-                fontSize: 9,
-                fontWeight: 400,
-                color: 'rgba(243,243,245,0.3)',
-                letterSpacing: '0.14em',
-              }}
-            >
-              03 / PROGRESS
-            </div>
-            <div
-              style={{
-                fontFamily: 'Satoshi, -apple-system, sans-serif',
-                fontSize: 22,
-                fontWeight: 300,
-                color: 'rgba(243,243,245,0.7)',
-                lineHeight: 1.2,
-                textAlign: 'center',
-                maxWidth: 200,
-              }}
-            >
-              {taskTitle}
-            </div>
-            <div
-              style={{
-                fontFamily: 'JetBrains Mono, monospace',
-                fontSize: 9,
-                letterSpacing: '0.14em',
-                color: taskDone ? 'rgba(200,60,47,0.7)' : 'rgba(243,243,245,0.3)',
-              }}
-            >
-              {taskDone ? '● COMPLETE' : '○ IN PROGRESS'}
-            </div>
-          </div>
-        </div>
-
-        {/* LOG & CONTINUE */}
-        <button
-          onClick={onExit}
-          style={{
-            marginTop: 48,
-            padding: '13px 40px',
-            border: '1px solid rgba(255,255,255,0.1)',
-            borderRadius: 2,
-            background: 'transparent',
-            color: 'rgba(243,243,245,0.6)',
-            fontFamily: 'JetBrains Mono, monospace',
-            fontSize: 11,
-            fontWeight: 400,
-            letterSpacing: '0.16em',
-            cursor: 'pointer',
-            transition: 'all 0.15s ease',
-          }}
-          onMouseEnter={(e) => {
-            (e.currentTarget as HTMLButtonElement).style.borderColor = 'rgba(255,255,255,0.22)';
-            (e.currentTarget as HTMLButtonElement).style.color = 'rgba(243,243,245,0.92)';
-          }}
-          onMouseLeave={(e) => {
-            (e.currentTarget as HTMLButtonElement).style.borderColor = 'rgba(255,255,255,0.1)';
-            (e.currentTarget as HTMLButtonElement).style.color = 'rgba(243,243,245,0.6)';
-          }}
-        >
-          LOG & CONTINUE
-        </button>
+          {taskDone ? '● complete' : '○ in progress'}
+        </p>
       </div>
-    </>
+
+      {/* Return — no fanfare */}
+      <button
+        onClick={onExit}
+        className="font-mono text-[11px] tracking-[0.18em] uppercase border border-border hover:border-border-hover text-text-muted hover:text-text-primary px-10 py-3 rounded-[2px] transition-all duration-150 cursor-pointer"
+      >
+        Return to work
+      </button>
+    </div>
   );
 }
 
@@ -860,38 +389,45 @@ interface FocusViewProps {
 
 export function FocusView({ taskId, onExit }: FocusViewProps) {
   const { plannedTasks, weeklyGoals } = usePlanner();
+  const { enterFocusMode, exitFocusMode } = useTheme();
 
   const [phase, setPhase] = useState<FocusPhase>('initiation');
   const [selectedDuration, setSelectedDuration] = useState(90);
   const [timerState, setTimerState] = useState<PomodoroState | null>(null);
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
-  const concludedAtRef = useRef<string>(formatTimeUTC());
+
+  // Ref so keydown closure always reads current phase without stale capture
+  const phaseRef = useRef<FocusPhase>('initiation');
+  useEffect(() => {
+    phaseRef.current = phase;
+  }, [phase]);
 
   const task = useMemo(
     () => plannedTasks.find((t) => t.id === taskId) ?? null,
     [plannedTasks, taskId]
   );
-
   const linkedGoal = useMemo(() => {
     if (!task?.weeklyGoalId) return null;
     return weeklyGoals.find((g) => g.id === task.weeklyGoalId) ?? null;
   }, [task, weeklyGoals]);
-
-  // Task position in the plan (e.g. "1/35")
   const taskIndex = useMemo(() => {
     const idx = plannedTasks.findIndex((t) => t.id === taskId);
     return idx >= 0 ? idx + 1 : 1;
   }, [plannedTasks, taskId]);
 
-  // IPC tick → drive phase + elapsed
+  // Activate the focus CSS theme (data-theme="focus") for the duration of this screen
+  useEffect(() => {
+    enterFocusMode();
+    return () => exitFocusMode();
+  }, [enterFocusMode, exitFocusMode]);
+
+  // IPC tick drives phase transitions
   useEffect(() => {
     const cleanup = window.api.pomodoro.onTick((state) => {
       setTimerState(state);
-
       if (state.isRunning && !state.isPaused) {
         setPhase((prev) => (prev === 'concluded' ? 'concluded' : 'active'));
-        const elapsed = Math.max(0, state.totalTime - state.timeRemaining);
-        setElapsedSeconds(elapsed);
+        setElapsedSeconds(Math.max(0, state.totalTime - state.timeRemaining));
       } else if (state.isRunning && state.isPaused) {
         setPhase((prev) => (prev === 'concluded' ? 'concluded' : 'paused'));
       }
@@ -899,26 +435,28 @@ export function FocusView({ taskId, onExit }: FocusViewProps) {
     return cleanup;
   }, []);
 
-  // ESC exits focus at any phase
+  // Keyboard: ESC exits; Space toggles pause when active or paused
   useEffect(() => {
     function handleKeyDown(e: KeyboardEvent) {
-      if (e.key === 'Escape') onExit();
+      if (e.key === 'Escape') {
+        onExit();
+        return;
+      }
+      if (e.key === ' ' && (phaseRef.current === 'active' || phaseRef.current === 'paused')) {
+        e.preventDefault();
+        void window.api.pomodoro.pause();
+      }
     }
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [onExit]);
 
-  async function handleCommence() {
+  async function handleBegin() {
     await window.api.pomodoro.start(taskId, task?.title ?? 'Focus', selectedDuration);
     setPhase('active');
   }
 
-  async function handleResume() {
-    await window.api.pomodoro.pause(); // toggles pause ↔ resume
-  }
-
-  async function handleConclude() {
-    concludedAtRef.current = formatTimeUTC();
+  async function handleEnd() {
     await window.api.pomodoro.stop();
     setPhase('concluded');
   }
@@ -927,28 +465,13 @@ export function FocusView({ taskId, onExit }: FocusViewProps) {
   const taskDone = task?.status === 'done';
 
   return (
-    <div
-      className="fixed inset-0 z-[100] overflow-hidden"
-      style={{ background: '#050505' }}
-    >
-      {/* Subtle noise grain overlay */}
-      <div
-        className="absolute inset-0 pointer-events-none"
-        style={{
-          backgroundImage: `url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.04'/%3E%3C/svg%3E")`,
-          opacity: 0.35,
-        }}
-      />
-
-      <ChromeHeader />
-
+    <div className="fixed inset-0 z-[100] bg-bg overflow-hidden">
       {phase === 'initiation' && (
         <InitiationScreen
           taskTitle={taskTitle}
           selectedDuration={selectedDuration}
           onSelectDuration={setSelectedDuration}
-          onCommence={() => void handleCommence()}
-          taskId={taskId}
+          onBegin={() => void handleBegin()}
         />
       )}
 
@@ -956,21 +479,19 @@ export function FocusView({ taskId, onExit }: FocusViewProps) {
         <ActiveScreen
           timerState={timerState}
           elapsedSeconds={elapsedSeconds}
-          taskId={taskId}
           taskTitle={taskTitle}
           goalTitle={linkedGoal?.title}
           taskIndex={taskIndex}
           totalTasks={plannedTasks.length}
-          onConclude={() => void handleConclude()}
+          onEnd={() => void handleEnd()}
         />
       )}
 
       {phase === 'paused' && (
         <PausedScreen
-          taskId={taskId}
           elapsedSeconds={elapsedSeconds}
           goalTitle={linkedGoal?.title}
-          onResume={() => void handleResume()}
+          onResume={() => void window.api.pomodoro.pause()}
         />
       )}
 
@@ -979,7 +500,6 @@ export function FocusView({ taskId, onExit }: FocusViewProps) {
           elapsedSeconds={elapsedSeconds}
           taskTitle={taskTitle}
           taskDone={taskDone}
-          concludedAtRef={concludedAtRef}
           onExit={onExit}
         />
       )}
