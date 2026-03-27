@@ -9,6 +9,17 @@ export function GravityPrompt() {
   const { plannedTasks } = usePlanner();
 
   const [yesterdayAnarchy, setYesterdayAnarchy] = useState(false);
+  const [isFirstTime, setIsFirstTime] = useState(false);
+
+  useEffect(() => {
+    if (!active) return;
+    void window.api.store.get('gravityFirstTimeSeen').then((seen) => {
+      if (!seen) {
+        setIsFirstTime(true);
+        void window.api.store.set('gravityFirstTimeSeen', true);
+      }
+    });
+  }, [active]);
 
   useEffect(() => {
     const yesterday = format(subDays(new Date(), 1), 'yyyy-MM-dd');
@@ -60,6 +71,12 @@ export function GravityPrompt() {
         >
           Start: {targetTask.title}
         </button>
+      )}
+      {isFirstTime && (
+        <p className="mt-2 text-[11px] text-text-muted leading-relaxed">
+          This is Gravity. Your other tasks are dimmed until you start working on what you said matters.
+          You can always type Cmd+K → Anarchy to override.
+        </p>
       )}
     </div>
   );

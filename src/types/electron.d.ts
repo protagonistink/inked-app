@@ -92,6 +92,7 @@ export type SafeStoreKey =
   | 'endOfDay.shownDate'
   | 'finance.configured'
   | 'gravityAnarchyDates'
+  | 'gravityFirstTimeSeen'
   | `briefing.dismissed.${string}`;
 
 interface StoreAPI {
