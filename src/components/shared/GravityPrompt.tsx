@@ -1,3 +1,5 @@
+import { useState, useEffect } from 'react';
+import { format, subDays } from 'date-fns';
 import { useGravityContext } from '@/context/GravityContext';
 import { usePlanner } from '@/context/AppContext';
 import { cn } from '@/lib/utils';
@@ -5,6 +7,16 @@ import { cn } from '@/lib/utils';
 export function GravityPrompt() {
   const { active, staleGoalId, staleGoalTitle, daysSinceActivity } = useGravityContext();
   const { plannedTasks } = usePlanner();
+
+  const [yesterdayAnarchy, setYesterdayAnarchy] = useState(false);
+
+  useEffect(() => {
+    const yesterday = format(subDays(new Date(), 1), 'yyyy-MM-dd');
+    void window.api.store.get('gravityAnarchyDates').then((raw) => {
+      const dates = raw as string[] | undefined;
+      if (dates?.includes(yesterday)) setYesterdayAnarchy(true);
+    });
+  }, []);
 
   if (!active || !staleGoalId || !staleGoalTitle) return null;
 
@@ -28,6 +40,11 @@ export function GravityPrompt() {
 
   return (
     <div className="px-6 py-5 border-b border-border-subtle">
+      {yesterdayAnarchy && (
+        <p className="text-[11px] uppercase tracking-[0.14em] text-text-muted mb-2">
+          Day {daysSinceActivity}. Yesterday was anarchy.
+        </p>
+      )}
       <p className="font-display text-[16px] text-text-emphasis leading-relaxed">
         It's been {dayLabel} since you touched{' '}
         <span className="font-semibold">{staleGoalTitle}</span>.

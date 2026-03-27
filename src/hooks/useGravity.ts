@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { format } from 'date-fns';
 import { usePlanner } from '@/context/AppContext';
 import { useAttentionBalance, useWeeklyMode } from '@/hooks/useWeeklyMode';
@@ -80,6 +80,13 @@ export function useGravity() {
   const [manualReleaseDate, setManualReleaseDate] = useState<string | null>(null);
 
   const todayKey = format(new Date(), 'yyyy-MM-dd');
+
+  useEffect(() => {
+    void window.api.store.get('gravityAnarchyDates').then((raw) => {
+      const dates = raw as string[] | undefined;
+      if (dates?.includes(todayKey)) setAnarchyDate(todayKey);
+    });
+  }, [todayKey]);
   const isWeekend = [0, 6].includes(new Date().getDay());
   const todayAnarchy = anarchyDate === todayKey;
   const todayManualRelease = manualReleaseDate === todayKey;
@@ -116,6 +123,11 @@ export function useGravity() {
 
   const invokeAnarchy = useCallback(() => {
     setAnarchyDate(todayKey);
+    void window.api.store.get('gravityAnarchyDates').then((raw) => {
+      const dates = raw as string[] | undefined;
+      const updated = [...(dates ?? []), todayKey].slice(-14); // keep 2 weeks
+      void window.api.store.set('gravityAnarchyDates', updated);
+    });
   }, [todayKey]);
 
   const releaseGravity = useCallback(() => {
