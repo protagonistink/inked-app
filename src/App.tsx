@@ -5,6 +5,7 @@ import { cn } from './lib/utils';
 import { ThemeProvider } from './context/ThemeContext';
 import { AppProvider, useAppShell, usePlanner } from './context/AppContext';
 import { InkAssistantProvider, useInkAssistant } from './context/InkAssistantContext';
+import { GravityProvider } from './context/GravityContext';
 import { DragOverlay } from './components/shared/DragOverlay';
 import { ErrorBoundary, RootFallback, ModeFallback } from './components/shared/ErrorBoundary';
 import { AtmosphereLayer } from './components/AtmosphereLayer';
@@ -261,9 +262,11 @@ export default function App() {
   return (
     <ThemeProvider>
       <AppProvider>
-        <DndProvider backend={HTML5Backend}>
-          <AppLayoutWithInk />
-        </DndProvider>
+        <GravityProvider>
+          <DndProvider backend={HTML5Backend}>
+            <AppLayoutWithInk />
+          </DndProvider>
+        </GravityProvider>
       </AppProvider>
     </ThemeProvider>
   );
