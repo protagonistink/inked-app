@@ -1,4 +1,4 @@
-import { createContext, useContext, type ReactNode } from 'react';
+import { createContext, useContext, useEffect, type ReactNode } from 'react';
 import { useGravity } from '@/hooks/useGravity';
 
 interface GravityContextValue {
@@ -23,6 +23,14 @@ const GravityContext = createContext<GravityContextValue>({
 
 export function GravityProvider({ children }: { children: ReactNode }) {
   const gravity = useGravity();
+
+  useEffect(() => {
+    document.documentElement.setAttribute(
+      'data-gravity',
+      gravity.active ? 'active' : 'released'
+    );
+  }, [gravity.active]);
+
   return (
     <GravityContext.Provider value={gravity}>
       {children}

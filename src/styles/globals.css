@@ -335,6 +335,24 @@
   opacity: 0.16;
 }
 
+/* === GRAVITY — Intention Enforcement ===
+   Dims non-priority UI when the user hasn't engaged their stale intention.
+   Uses [data-gravity="active"] on documentElement. Lighter than focus-dim:
+   content is readable and clickable, just visually receded. */
+
+[data-gravity="active"] .gravity-dim {
+  opacity: 0.5;
+  filter: saturate(0.6);
+  transition: opacity 500ms cubic-bezier(0.22, 1, 0.36, 1),
+              filter 500ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+/* Release transition — when gravity lifts */
+.gravity-dim {
+  transition: opacity 500ms cubic-bezier(0.22, 1, 0.36, 1),
+              filter 500ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
 .utility-rail {
   background: var(--color-bg);
   position: relative;
