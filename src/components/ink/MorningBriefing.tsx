@@ -14,6 +14,7 @@ import { CommitChips } from '../CommitChips';
 import { RitualSuggestions } from '../RitualSuggestions';
 import { BriefingInput } from './BriefingInput';
 import { MarkdownRenderer } from './MarkdownRenderer';
+import { GravityPrompt } from '@/components/shared/GravityPrompt';
 
 export function MorningBriefing({
   onClose,
@@ -168,6 +169,8 @@ export function MorningBriefing({
                 Thread: {state.activeThreadTitle}
               </div>
             )}
+
+            <GravityPrompt />
 
             {/* Messages area */}
             <div className={cn('flex-1 overflow-y-auto flex flex-col hide-scrollbar', state.isOverlay ? 'gap-4' : 'gap-6')}>
