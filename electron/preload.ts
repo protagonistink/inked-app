@@ -182,6 +182,10 @@ contextBridge.exposeInMainWorld('api', {
     sendToNotion: (text: string) => ipcRenderer.invoke('capture:send-to-notion', text),
     hideCaptureWindow: () => ipcRenderer.invoke('capture:hide-capture-window'),
   },
+  // Focus Timer Window
+  focusTimer: {
+    hide: () => ipcRenderer.invoke('focus-timer:hide'),
+  },
   // Finance (Compass engine)
   finance: {
     getState: () => ipcRenderer.invoke('finance:get-state'),

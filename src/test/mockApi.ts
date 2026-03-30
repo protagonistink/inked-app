@@ -101,6 +101,9 @@ export function installMockApi(): typeof window.api {
       deleteThread: vi.fn().mockResolvedValue(true),
       clearOld: vi.fn().mockResolvedValue(true),
     },
+    focusTimer: {
+      hide: vi.fn().mockResolvedValue(undefined),
+    },
     capture: {
       list: vi.fn().mockResolvedValue([]),
       add: vi.fn().mockImplementation(async (text: string) => ({

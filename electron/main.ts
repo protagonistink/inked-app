@@ -3,7 +3,7 @@ import path from 'node:path';
 import { registerAsanaHandlers } from './asana';
 import { registerGCalHandlers } from './gcal';
 import { registerStoreHandlers } from './store';
-import { registerTimerHandlers, setTrayUpdater, startLastUsedPomodoro } from './timer';
+import { registerTimerHandlers, setTrayUpdater, setFocusTimerCallbacks, startLastUsedPomodoro } from './timer';
 import { registerFocusHandlers } from './focus';
 import { registerAnthropicHandlers } from './anthropic';
 import { registerInkContextHandlers } from './ink-context';
@@ -23,6 +23,7 @@ const TRAY_ICON_PATH = path.join(process.env.VITE_PUBLIC!, 'icon-tray.png');
 
 let mainWindow: BrowserWindow | null;
 let captureWindow: BrowserWindow | null = null;
+let focusTimerWindow: BrowserWindow | null = null;
 let tray: Tray | null = null;
 let isQuitting = false;
 const VITE_DEV_SERVER_URL = process.env['VITE_DEV_SERVER_URL'];
@@ -132,9 +133,6 @@ function createCaptureWindow() {
   captureWindow.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
   captureWindow.on('blur', () => {
     captureWindow?.hide();
-    if (process.platform === 'darwin' && !mainWindow?.isVisible()) {
-      app.hide();
-    }
   });
   captureWindow.on('closed', () => { captureWindow = null; });
 
@@ -145,6 +143,54 @@ function createCaptureWindow() {
       query: { mode: 'capture' },
     });
   }
+}
+
+function createFocusTimerWindow() {
+  if (focusTimerWindow && !focusTimerWindow.isDestroyed()) {
+    focusTimerWindow.show();
+    return;
+  }
+
+  const { width: sw } = screen.getPrimaryDisplay().workAreaSize;
+
+  focusTimerWindow = new BrowserWindow({
+    width: 280,
+    height: 72,
+    x: sw - 300,
+    y: 20,
+    frame: false,
+    alwaysOnTop: true,
+    level: 'floating',
+    skipTaskbar: true,
+    resizable: false,
+    show: false,
+    transparent: true,
+    hasShadow: true,
+    backgroundColor: '#00000000',
+    webPreferences: {
+      preload: path.join(__dirname, 'preload.js'),
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: true,
+      webSecurity: true,
+      allowRunningInsecureContent: false,
+    },
+  });
+
+  focusTimerWindow.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
+  focusTimerWindow.on('closed', () => { focusTimerWindow = null; });
+
+  if (VITE_DEV_SERVER_URL) {
+    void focusTimerWindow.loadURL(`${VITE_DEV_SERVER_URL}?mode=focus-timer`);
+  } else {
+    void focusTimerWindow.loadFile(path.join(process.env.DIST!, 'index.html'), {
+      query: { mode: 'focus-timer' },
+    });
+  }
+
+  focusTimerWindow.once('ready-to-show', () => {
+    focusTimerWindow?.show();
+  });
 }
 
 function createTray() {
@@ -201,6 +247,7 @@ function createTray() {
 app.on('before-quit', () => {
   isQuitting = true;
   captureWindow?.destroy();
+  focusTimerWindow?.destroy();
 });
 
 app.on('window-all-closed', () => {
@@ -275,6 +322,11 @@ app.whenReady().then(() => {
   createCaptureWindow();
   createTray();
 
+  setFocusTimerCallbacks(
+    () => createFocusTimerWindow(),
+    () => { focusTimerWindow?.hide(); },
+  );
+
   globalShortcut.register('CommandOrControl+Shift+.', () => {
     if (!captureWindow) return;
     if (captureWindow.isVisible()) {
@@ -283,6 +335,23 @@ app.whenReady().then(() => {
       captureWindow.show();
       captureWindow.focus();
     }
+  });
+
+  globalShortcut.register('CommandOrControl+Shift+F', () => {
+    if (!focusTimerWindow || focusTimerWindow.isDestroyed()) return;
+    if (focusTimerWindow.isVisible()) {
+      focusTimerWindow.hide();
+    } else {
+      focusTimerWindow.show();
+    }
+  });
+
+  ipcMain.handle('focus-timer:show', () => {
+    createFocusTimerWindow();
+  });
+
+  ipcMain.handle('focus-timer:hide', () => {
+    focusTimerWindow?.hide();
   });
 
   // Purge stale captures at midnight and on wake

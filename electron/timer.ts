@@ -31,9 +31,16 @@ let state: PomodoroState = {
 
 let timerInterval: NodeJS.Timeout | null = null;
 let trayUpdater: ((state: PomodoroState) => void) | null = null;
+let focusTimerOpen: (() => void) | null = null;
+let focusTimerClose: (() => void) | null = null;
 
 export function setTrayUpdater(fn: (state: PomodoroState) => void) {
   trayUpdater = fn;
+}
+
+export function setFocusTimerCallbacks(open: () => void, close: () => void) {
+  focusTimerOpen = open;
+  focusTimerClose = close;
 }
 
 function getConfig() {
@@ -70,6 +77,7 @@ function startPomodoroSession(taskId: string, taskTitle?: string, durationMins?:
   };
   startTimer();
   broadcast();
+  focusTimerOpen?.();
 }
 
 function playCue(kind: 'focus-end' | 'break-end') {
@@ -121,6 +129,7 @@ function startTimer() {
           state.isRunning = false;
           state.isBreak = false;
           state.timeRemaining = 0;
+          focusTimerClose?.();
         }
       }
 
@@ -146,6 +155,7 @@ export function registerTimerHandlers() {
     state.currentTaskTitle = null;
     if (timerInterval) clearInterval(timerInterval);
     broadcast();
+    focusTimerClose?.();
   });
 
   ipcMain.handle('pomodoro:skip', () => {

@@ -296,6 +296,10 @@ interface MenuAPI {
   onOpenPlot: (cb: () => void) => () => void;
 }
 
+interface FocusTimerAPI {
+  hide: () => Promise<void>;
+}
+
 interface CaptureAPI {
   list: () => Promise<import('./index').CaptureEntry[]>;
   add: (text: string) => Promise<import('./index').CaptureEntry>;
@@ -322,6 +326,7 @@ declare global {
       ink: InkAPI;
       chat: ChatHistoryAPI;
       stripe: StripeAPI;
+      focusTimer: FocusTimerAPI;
       capture: CaptureAPI;
       finance: FinanceAPI;
       menu: MenuAPI;
