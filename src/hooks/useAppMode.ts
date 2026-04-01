@@ -36,7 +36,7 @@ export function appModeReducer(state: AppModeState, action: AppModeAction): AppM
       return { ...state, mode: 'executing', inboxOpen: false };
 
     case 'ENTER_FOCUS':
-      if (state.mode !== 'executing') return state;
+      if (state.mode === 'briefing') return state;
       return { ...state, mode: 'focus', focusTaskId: action.taskId };
 
     case 'EXIT_FOCUS':

@@ -6,7 +6,7 @@ import { buildMinimalContext } from '@/lib/briefingContext';
 import type { SafeStoreKey } from '@/types/electron';
 
 export function useBriefingLifecycle() {
-  const { completeBriefing, openBriefing } = useAppShell();
+  const { completeBriefing, startDay, openBriefing } = useAppShell();
   const {
     isInitialized,
     dayCommitInfo,
@@ -92,13 +92,14 @@ export function useBriefingLifecycle() {
     }
     setIsEveningReflection(false);
     completeBriefing();
+    startDay();
     window.api.store.set(`briefing.dismissed.${today}`, true);
 
     if (wasEvening) {
       void generateEveningReflection(today, activeThreadId);
       return;
     }
-  }, [activeThreadId, pendingDayReset, resetDay, isEveningReflection, completeBriefing]);
+  }, [activeThreadId, pendingDayReset, resetDay, isEveningReflection, completeBriefing, startDay]);
 
   return {
     isEveningReflection,

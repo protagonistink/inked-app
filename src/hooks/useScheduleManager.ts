@@ -40,6 +40,16 @@ export function useScheduleManager({
 
     const existingBlock = scheduleBlocks.find((block) => block.linkedTaskId === taskId);
     const previousExistingBlock = existingBlock ? { ...existingBlock } : null;
+
+    // Find ritual block with matching title to replace (prevents duplicate blocks)
+    const normalizedTitle = title.toLowerCase().replace(/\s+/g, ' ').trim();
+    const matchingRitualBlock = !existingBlock
+      ? scheduleBlocks.find((block) =>
+          block.id.startsWith('ritual-') &&
+          block.title.toLowerCase().replace(/\s+/g, ' ').trim() === normalizedTitle
+        )
+      : null;
+
     const cascadePlan = planFocusCascade(startHour, startMin, durationMins, scheduleBlocks, existingBlock?.id);
     const eventPayload = buildFocusEventPayload(
       title,
@@ -76,7 +86,11 @@ export function useScheduleManager({
 
     setScheduleBlocks((prev) =>
       [
-        ...prev.filter((block) => block.id !== localBlockId && !cascadePlan.cascadeUpdates.has(block.id)),
+        ...prev.filter((block) =>
+          block.id !== localBlockId &&
+          !cascadePlan.cascadeUpdates.has(block.id) &&
+          block.id !== matchingRitualBlock?.id
+        ),
         ...movedBlocks,
         localBlock,
       ].sort(sortBlocksByStart)
@@ -161,6 +175,7 @@ export function useScheduleManager({
         );
       }
       setDailyPlanForDate(commitDate, (prev) => ({ ...prev, committedTaskIds: previousCommittedTaskIds }));
+      throw error instanceof Error ? error : new Error('Failed to sync focus block with calendar');
     }
   }, [bringForward, dailyPlan, plannedTasks, planningDate, scheduleBlocks, setDailyPlanForDate, setPlannedTasks, setScheduleBlocks]);
 
@@ -284,18 +299,47 @@ export function useScheduleManager({
     const block = scheduleBlocks.find((item) => item.id === blockId);
     if (!block || (block.readOnly && block.kind !== 'break')) return;
 
-    // Ritual/break blocks: reposition in place (no GCal sync)
+    // Ritual/break blocks: reposition locally and sync to GCal
     if (!block.linkedTaskId) {
       setScheduleBlocks((prev) =>
         prev
           .map((b) => b.id === blockId ? { ...b, startHour, startMin, durationMins } : b)
           .sort(sortBlocksByStart)
       );
+
+      // Sync ritual block to Google Calendar
+      const eventPayload = buildFocusEventPayload(
+        block.title,
+        blockId,
+        startHour,
+        startMin,
+        durationMins,
+        planningDate
+      );
+
+      try {
+        if (block.eventId) {
+          const result = await withTimeout(window.api.gcal.updateEvent(block.eventId, eventPayload, block.calendarId), 'gcal.updateEvent');
+          if (!result.success) console.warn('Failed to update ritual GCal event:', result.error);
+        } else {
+          const result = await withTimeout(window.api.gcal.createEvent(eventPayload), 'gcal.createEvent');
+          if (result.success && result.data) {
+            setScheduleBlocks((prev) =>
+              prev.map((b) => b.id === blockId
+                ? { ...b, eventId: result.data!.id, calendarId: result.data!.calendarId, source: 'gcal' }
+                : b
+              )
+            );
+          }
+        }
+      } catch (err) {
+        console.warn('GCal sync error for ritual block (local state preserved):', err);
+      }
       return;
     }
 
     await scheduleTaskBlock(block.linkedTaskId, startHour, startMin, durationMins);
-  }, [scheduleBlocks, scheduleTaskBlock, setScheduleBlocks]);
+  }, [planningDate, scheduleBlocks, scheduleTaskBlock, setScheduleBlocks]);
 
   // Removes all focus blocks (including manually adjusted ones) — intentional for re-commit workflow
   const clearFocusBlocks = useCallback(async () => {

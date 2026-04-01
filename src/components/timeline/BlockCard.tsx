@@ -1,6 +1,6 @@
 // src/components/BlockCard.tsx
 import React, { useEffect, useRef, useState, useMemo } from 'react';
-import { GripVertical, Play, Check, X } from 'lucide-react';
+import { Check } from 'lucide-react';
 import { useDrag, useDrop } from 'react-dnd';
 import { getEmptyImage } from 'react-dnd-html5-backend';
 import { cn, formatRoundedHours } from '@/lib/utils';
@@ -74,7 +74,7 @@ export function BlockCard({
 }) {
   const { isFocus, isLight } = useTheme();
   const { enterFocus } = useAppShell();
-  const { plannedTasks, weeklyGoals, setActiveTask, toggleTask, nestTaskInBlock, returnTaskToInbox } = usePlanner();
+  const { plannedTasks, weeklyGoals, setActiveTask, toggleTask, nestTaskInBlock } = usePlanner();
   const linkedTask = block.linkedTaskId ? plannedTasks.find((task) => task.id === block.linkedTaskId) : null;
   const isDone = linkedTask?.status === 'done';
   const blockSubtitle = linkedTask?.notes
@@ -249,13 +249,6 @@ export function BlockCard({
     window.addEventListener('mouseup', onUp);
   }
 
-  function startFocus(event: React.MouseEvent<HTMLButtonElement>) {
-    if (locked || !block.linkedTaskId || block.readOnly || isDone) return;
-    event.stopPropagation();
-    setActiveTask(block.linkedTaskId);
-    enterFocus(block.linkedTaskId);
-  }
-
   function handleClick(e: React.MouseEvent<HTMLDivElement>) {
     if (didDragRef.current) { didDragRef.current = false; return; }
     const target = e.target as HTMLElement;
@@ -263,12 +256,6 @@ export function BlockCard({
     e.stopPropagation(); // Prevent grid from deselecting immediately
     // Select/deselect this block
     onSelect?.(isSelected ? '' : block.id);
-  }
-
-  function handleToggleTask(event: React.MouseEvent<HTMLButtonElement>) {
-    if (locked || !block.linkedTaskId || block.readOnly) return;
-    event.stopPropagation();
-    void toggleTask(block.linkedTaskId);
   }
 
   function handleDoubleClick(event: React.MouseEvent<HTMLDivElement>) {
@@ -292,6 +279,7 @@ export function BlockCard({
         'animate-fade-in absolute overflow-hidden flex flex-col group/block select-none',
         isCompact ? 'gap-0 py-1 px-2' : 'gap-1',
         'transition-all duration-300',
+        !locked && !isDone && !(block.readOnly && block.kind !== 'break') && 'cursor-grab active:cursor-grabbing',
         isFocus && block.kind !== 'hard' && 'focus-block-card',
         stagger === 1 && 'stagger-2',
         stagger === 2 && 'stagger-3',
@@ -314,69 +302,21 @@ export function BlockCard({
         zIndex: isSelected ? 6 : isNow ? 5 : colIndex + 1,
       }}
     >
-      {/* Drag handle to return block to sidebar */}
+      {/* Hidden drag handle — preserves drag-back functionality */}
       {!locked && !block.readOnly && !isDone && block.linkedTaskId && (
-        <button
-          ref={dragRef}
-          onMouseDown={(event) => {
-            event.preventDefault();
-            event.stopPropagation();
-          }}
-          className="absolute top-2 left-2 p-1 rounded-md text-text-muted/60 hover:text-text-primary hover:bg-bg-card cursor-grab active:cursor-grabbing opacity-0 group-hover/block:opacity-100 transition-all z-10"
-          title="Drag back to plan"
-        >
-          <GripVertical className="w-3 h-3" />
-        </button>
+        <span ref={dragRef} className="sr-only" aria-hidden="true" />
       )}
-      {!locked && !block.readOnly && block.linkedTaskId && !isDone && (
-        <button
-          onMouseDown={(event) => {
-            event.preventDefault();
-            event.stopPropagation();
-          }}
-          onClick={startFocus}
-          className="absolute top-2 right-9 rounded-md bg-black/15 p-1 text-text-muted/80 hover:text-accent-warm-hover hover:bg-bg-card opacity-0 group-hover/block:opacity-100 transition-all"
-          title="Start focus"
-        >
-          <Play className="w-3 h-3 fill-current" />
-        </button>
-      )}
-      {/* Remove from calendar — returns task to inbox */}
-      {!locked && !block.readOnly && block.linkedTaskId && !isDone && block.proposal !== 'draft' && (
-        <button
-          onMouseDown={(event) => {
-            event.preventDefault();
-            event.stopPropagation();
-          }}
-          onClick={(event) => {
-            event.stopPropagation();
-            if (block.linkedTaskId) {
-              void returnTaskToInbox(block.linkedTaskId);
-            }
-          }}
-          className="absolute top-2 right-[4.5rem] rounded-md bg-black/15 p-1 text-text-muted/80 hover:text-accent-warm hover:bg-bg-card opacity-0 group-hover/block:opacity-100 transition-all"
-          title="Remove from calendar"
-        >
-          <X className="w-3 h-3" />
-        </button>
-      )}
-      {!locked && !block.readOnly && block.linkedTaskId && (
-        <button
-          onMouseDown={(event) => {
-            event.preventDefault();
-            event.stopPropagation();
-          }}
-          onClick={handleToggleTask}
-          className={cn(
-            'absolute top-2 right-2 rounded-md p-1 transition-all',
-            isDone
-              ? 'bg-accent-warm/18 text-accent-warm opacity-100'
-              : 'bg-black/15 text-text-muted/80 opacity-0 group-hover/block:opacity-100 hover:text-text-primary hover:bg-bg-card'
+      {/* Thread color dot + done indicator */}
+      {isTaskBlock && (
+        <div className="absolute top-2 left-2 z-10 flex items-center gap-1.5">
+          <div
+            className="w-2.5 h-2.5 rounded-full shrink-0"
+            style={{ background: isDone ? 'var(--color-text-muted)' : intentionColor }}
+          />
+          {isDone && (
+            <Check className="w-3 h-3 text-text-muted" />
           )}
-          title={isDone ? 'Mark incomplete' : 'Mark done'}
-        >
-          <Check className="w-3 h-3" />
-        </button>
+        </div>
       )}
 
       <div className="relative z-10 flex items-start pr-6">

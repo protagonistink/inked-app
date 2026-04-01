@@ -110,7 +110,31 @@ const SAFE_STORE_KEYS = new Set([
   'startOfDay.shownDate',
   'endOfDay.shownDate',
   'finance.configured',
+  'gravityAnarchyDates',
 ]);
+
+export function normalizeGcalSettings(
+  calendarIds: unknown,
+  writeCalendarId: unknown,
+  fallbackCalendarId: unknown = 'primary',
+): { calendarIds: string[]; writeCalendarId: string } {
+  const normalizedIds = Array.isArray(calendarIds)
+    ? calendarIds.filter((id): id is string => typeof id === 'string' && id.trim().length > 0)
+    : [];
+  const fallbackId = typeof fallbackCalendarId === 'string' && fallbackCalendarId.trim().length > 0
+    ? fallbackCalendarId
+    : 'primary';
+  const normalizedWriteId = typeof writeCalendarId === 'string' && writeCalendarId.trim().length > 0
+    ? writeCalendarId
+    : fallbackId;
+
+  if (!normalizedIds.includes(normalizedWriteId)) normalizedIds.push(normalizedWriteId);
+
+  return {
+    calendarIds: normalizedIds.length > 0 ? normalizedIds : [fallbackId],
+    writeCalendarId: normalizedWriteId,
+  };
+}
 
 function isIsoDate(value: unknown): value is string {
   return typeof value === 'string' && DATE_RE.test(value);
@@ -160,6 +184,7 @@ function sanitizeStoreValue(key: string, value: unknown): unknown {
   if (key === 'dayLockedDate' || key === 'monthlyPlanDismissedDate' || key === 'appModeDate' || key === 'startOfDay.shownDate' || key === 'endOfDay.shownDate') {
     return value === null || isIsoDate(value) ? value : null;
   }
+  if (key === 'gravityAnarchyDates') return Array.isArray(value) && value.every(isIsoDate) ? value : [];
   if (key === 'appMode') return typeof value === 'string' && APP_MODES.includes(value as AppMode) ? value : null;
   if (key === 'appModeView') return typeof value === 'string' && VIEWS.includes(value as View) ? value : null;
   if (key === 'appModeFocusTaskId') return value === null || typeof value === 'string' ? value : null;
@@ -207,6 +232,12 @@ export function registerStoreHandlers() {
       console.warn('Failed to resolve build date:', error);
     }
 
+    const normalizedGcal = normalizeGcalSettings(
+      gcal.calendarIds,
+      gcal.writeCalendarId,
+      gcal.calendarId,
+    );
+
     return {
       app: {
         version: app.getVersion(),
@@ -221,9 +252,9 @@ export function registerStoreHandlers() {
       gcal: {
         clientId: String(getSecure('gcal.clientId') ?? ''),
         clientSecretConfigured: Boolean(getSecure('gcal.clientSecret')),
-        calendarId: String(gcal.calendarId ?? 'primary'),
-        calendarIds: Array.isArray(gcal.calendarIds) ? gcal.calendarIds : ['primary'],
-        writeCalendarId: String(gcal.writeCalendarId ?? gcal.calendarId ?? 'primary'),
+        calendarId: normalizedGcal.writeCalendarId,
+        calendarIds: normalizedGcal.calendarIds,
+        writeCalendarId: normalizedGcal.writeCalendarId,
       },
       pomodoro: {
         workMins: Number(pomodoro.workMins ?? 25),
@@ -307,11 +338,16 @@ export function registerStoreHandlers() {
     if ('notionCapturePageId' in payload) store.set('notion.capturePageId', str(payload.notionCapturePageId));
 
     // Calendar
-    if ('gcalCalendarIds' in payload) store.set('gcal.calendarIds', strArray(payload.gcalCalendarIds));
-    if ('gcalWriteCalendarId' in payload) {
-      const calId = str(payload.gcalWriteCalendarId);
-      store.set('gcal.writeCalendarId', calId);
-      store.set('gcal.calendarId', calId);
+    if ('gcalCalendarIds' in payload || 'gcalWriteCalendarId' in payload) {
+      const currentGcal = (store.get('gcal') as Record<string, unknown> | undefined) ?? {};
+      const normalizedGcal = normalizeGcalSettings(
+        'gcalCalendarIds' in payload ? strArray(payload.gcalCalendarIds) : currentGcal.calendarIds,
+        'gcalWriteCalendarId' in payload ? str(payload.gcalWriteCalendarId) : currentGcal.writeCalendarId,
+        currentGcal.calendarId,
+      );
+      store.set('gcal.calendarIds', normalizedGcal.calendarIds);
+      store.set('gcal.writeCalendarId', normalizedGcal.writeCalendarId);
+      store.set('gcal.calendarId', normalizedGcal.writeCalendarId);
     }
 
     // Pomodoro (1–120 min range)

@@ -27,6 +27,7 @@ export function asInboxItem(task: PlannedTask): InboxItem {
     time: task.lastCommittedDate === today ? 'Held for today' : formatRoundedHours(task.estimateMins),
     priority: task.priority,
     workMode: task.workMode,
+    asanaProject: task.asanaProject,
   };
 }
 

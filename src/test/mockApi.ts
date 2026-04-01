@@ -23,6 +23,7 @@ export function installMockApi(): typeof window.api {
       pause: vi.fn(),
       stop: vi.fn(),
       skip: vi.fn(),
+      extendBreak: vi.fn(),
       onTick: vi.fn(),
     },
     focus: {

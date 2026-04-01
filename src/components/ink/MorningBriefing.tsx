@@ -217,6 +217,7 @@ export function MorningBriefing({
                   chips={state.scheduleChips}
                   proposalLabel={state.proposalLabel}
                   isOverlay={state.isOverlay}
+                  weeklyGoals={state.weeklyGoals}
                   onToggle={actions.toggleScheduleChip}
                   onExecute={() => void actions.executeSchedule()}
                   onReorder={actions.reorderScheduleChip}
@@ -229,6 +230,7 @@ export function MorningBriefing({
                   chips={state.commitChips}
                   proposalLabel={state.proposalLabel}
                   isOverlay={state.isOverlay}
+                  weeklyGoals={state.weeklyGoals}
                   onToggle={actions.toggleChip}
                   onExecute={actions.executeCommit}
                 />

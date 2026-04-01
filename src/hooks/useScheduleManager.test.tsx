@@ -85,9 +85,11 @@ describe('useScheduleManager', () => {
   it('rolls back optimistic state when calendar creation fails', async () => {
     const { result } = renderHook(() => useHarness());
 
-    await act(async () => {
-      await result.current.scheduleTaskBlock('task-1', 9, 0, 60);
-    });
+    await expect(
+      act(async () => {
+        await result.current.scheduleTaskBlock('task-1', 9, 0, 60);
+      })
+    ).rejects.toThrow('Calendar exploded');
 
     await waitFor(() => {
       expect(result.current.scheduleBlocks).toEqual([]);
@@ -99,27 +101,29 @@ describe('useScheduleManager', () => {
   });
 
   it('does not wipe unrelated task changes when calendar creation fails', async () => {
-    let rejectCreate: ((value: { success: false; error: string }) => void) | null = null;
+    let rejectCreate:
+      | ((value: { success: false; error: string }) => void)
+      | undefined;
     window.api.gcal.createEvent = vi.fn().mockImplementation(
       () =>
         new Promise((resolve) => {
-          rejectCreate = resolve as typeof rejectCreate;
+          rejectCreate = resolve as (value: { success: false; error: string }) => void;
         })
     );
 
     const { result } = renderHook(() => useHarness());
+    let pendingSchedule: Promise<void> | null = null;
 
     await act(async () => {
-      void result.current.scheduleTaskBlock('task-1', 9, 0, 60);
+      pendingSchedule = result.current.scheduleTaskBlock('task-1', 9, 0, 60);
     });
 
     await act(async () => {
       result.current.promoteTask2();
     });
 
-    await act(async () => {
-      rejectCreate?.({ success: false, error: 'Calendar exploded' });
-    });
+    rejectCreate?.({ success: false, error: 'Calendar exploded' });
+    await expect(pendingSchedule).rejects.toThrow('Calendar exploded');
 
     await waitFor(() => {
       expect(result.current.plannedTasks.find((task) => task.id === 'task-1')).toMatchObject({

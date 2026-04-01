@@ -9,6 +9,21 @@ import { assertRateLimit, logSecurityEvent } from './security';
 const GCAL_BASE_URL = 'https://www.googleapis.com/calendar/v3';
 const GCAL_ID_RE = /^[A-Za-z0-9@._-]+$/;
 
+export function normalizeCalendarSelection(
+  calendarIds: string[] | undefined,
+  writeCalendarId?: string,
+): string[] {
+  const normalized = Array.isArray(calendarIds)
+    ? calendarIds.filter((id): id is string => typeof id === 'string' && id.trim().length > 0)
+    : [];
+  const writeId = typeof writeCalendarId === 'string' && writeCalendarId.trim().length > 0
+    ? writeCalendarId
+    : undefined;
+
+  if (writeId && !normalized.includes(writeId)) normalized.push(writeId);
+  return normalized.length > 0 ? normalized : ['primary'];
+}
+
 // OAuth 2.0 config — user provides client ID/secret in Settings
 function getOAuthConfig() {
   return {
@@ -74,7 +89,9 @@ async function gcalFetch(path: string, options: RequestInit = {}) {
 
 function getSelectedCalendarIds() {
   const ids = store.get('gcal.calendarIds') as string[] | undefined;
-  if (Array.isArray(ids) && ids.length > 0) return ids;
+  const writeCalendarId = store.get('gcal.writeCalendarId') as string | undefined;
+  const normalized = normalizeCalendarSelection(ids, writeCalendarId);
+  if (normalized.length > 0) return normalized;
 
   const legacyCalendarId = store.get('gcal.calendarId') as string | undefined;
   return [legacyCalendarId || 'primary'];

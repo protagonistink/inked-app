@@ -21,10 +21,11 @@ export function InkFab({ briefingModeOverride }: InkFabProps) {
     togglePinnedAssistant,
     inkStreaming,
     briefingSessionId,
+    briefingMode,
     setInkStreaming,
   } = useInkAssistant();
 
-  const displayMode = briefingModeOverride ?? 'chat';
+  const displayMode = briefingModeOverride ?? briefingMode;
 
   return (
     <div

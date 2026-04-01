@@ -7,7 +7,7 @@ import type { PlannedTask, ScheduleBlock } from '@/types';
 import { useExternalPlannerSync } from './useExternalPlannerSync';
 import { installMockApi } from '../test/mockApi';
 
-function useHarness() {
+function useHarness(calendarId = 'primary') {
   const [plannedTasks, setPlannedTasks] = useState<PlannedTask[]>([
     {
       id: 'task-1',
@@ -19,7 +19,7 @@ function useHarness() {
       estimateMins: 60,
       active: false,
       scheduledEventId: 'event-1',
-      scheduledCalendarId: 'primary',
+      scheduledCalendarId: calendarId,
     },
   ]);
   const [scheduleBlocks, setScheduleBlocks] = useState<ScheduleBlock[]>([
@@ -34,7 +34,7 @@ function useHarness() {
       linkedTaskId: 'task-1',
       linkedGoalId: 'goal-1',
       eventId: 'event-1',
-      calendarId: 'primary',
+      calendarId,
       source: 'gcal',
     },
   ]);
@@ -107,6 +107,44 @@ describe('useExternalPlannerSync', () => {
         id: 'event-1',
         linkedTaskId: 'task-1',
         linkedGoalId: 'goal-1',
+      });
+    });
+  });
+
+  it('preserves synced focus blocks from a missing read calendar during refresh', async () => {
+    const api = installMockApi();
+    (api.asana.getTasks as ReturnType<typeof vi.fn>).mockResolvedValue({
+      success: true,
+      data: [
+        {
+          gid: 'asana-1',
+          name: 'Write draft',
+          completed: false,
+          due_on: null,
+          projects: [],
+          tags: [],
+          notes: '',
+          custom_fields: [],
+        },
+      ],
+    });
+    (api.gcal.getEvents as ReturnType<typeof vi.fn>).mockResolvedValue({
+      success: true,
+      data: [],
+    });
+
+    const { result } = renderHook(() => useHarness('work'));
+
+    await act(async () => {
+      await result.current.refreshExternalData();
+    });
+
+    await waitFor(() => {
+      expect(result.current.scheduleBlocks).toHaveLength(1);
+      expect(result.current.scheduleBlocks[0]).toMatchObject({
+        id: 'event-1',
+        linkedTaskId: 'task-1',
+        calendarId: 'work',
       });
     });
   });

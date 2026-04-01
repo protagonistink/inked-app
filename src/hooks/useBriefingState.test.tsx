@@ -207,6 +207,26 @@ describe('useBriefingState', () => {
     ]);
   });
 
+  it('surfaces calendar write failures while locking a schedule', async () => {
+    mockPlanner.scheduleTaskBlock.mockRejectedValueOnce(new Error('Calendar exploded'));
+
+    const { result } = renderBriefing();
+
+    await act(async () => {
+      result.current.actions.handleStartDay('Go');
+    });
+
+    act(() => {
+      simulateAssistantMessage('```schedule\n[{"title":"Write draft","startHour":9,"startMin":0,"durationMins":60}]\n```');
+    });
+
+    await act(async () => {
+      await result.current.actions.executeSchedule();
+    });
+
+    expect(result.current.state.error).toBe('Calendar exploded');
+  });
+
   // --- openRevision ---
 
   it('transitions to conversation phase and seeds input', async () => {

@@ -90,9 +90,7 @@ function AppLayout() {
         return;
       }
 
-      const isViewShortcut = e.metaKey || e.ctrlKey || (!e.metaKey && !e.ctrlKey);
-
-      if (!isViewShortcut) return;
+      if (!(e.metaKey || e.ctrlKey)) return;
 
       if (e.key === '1') {
         e.preventDefault();
@@ -107,6 +105,9 @@ function AppLayout() {
       } else if (e.key === '0') {
         e.preventDefault();
         setCapturePopoverOpen((v) => !v);
+      } else if (e.key === 'c' && e.shiftKey) {
+        e.preventDefault();
+        void window.api.shell.openExternal('https://calendar.google.com');
       }
     }
 

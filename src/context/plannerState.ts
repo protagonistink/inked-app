@@ -141,5 +141,9 @@ export function storedPlannerStateToPlannerState(stored: StoredPlannerState): Pa
     nextState.userName = stored.userName;
   }
 
+  if (stored.localScheduleBlocks?.length) {
+    nextState.scheduleBlocks = stored.localScheduleBlocks;
+  }
+
   return nextState;
 }

@@ -79,15 +79,18 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     return () => window.removeEventListener(PREFERENCES_UPDATED_EVENT, handlePreferencesUpdated as EventListener);
   }, []);
 
+  const enterFocusMode = useCallback(() => setFocusActive(true), []);
+  const exitFocusMode = useCallback(() => setFocusActive(false), []);
+
   const value = useMemo<ThemeContextValue>(() => ({
     mode,
     preferredMode,
     setPreferredMode,
-    enterFocusMode: () => setFocusActive(true),
-    exitFocusMode: () => setFocusActive(false),
+    enterFocusMode,
+    exitFocusMode,
     isFocus: mode === 'focus',
     isLight: mode === 'light',
-  }), [mode, preferredMode]);
+  }), [mode, preferredMode, enterFocusMode, exitFocusMode, setPreferredMode]);
 
   return (
     <ThemeContext.Provider value={value}>

@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { Play, Pause, SkipForward, Square, RotateCcw, Check } from 'lucide-react';
+import { Play, Pause, SkipForward, Square, Check, Coffee, FastForward, Plus } from 'lucide-react';
 import type { PomodoroState } from '@/types';
 import { cn } from '@/lib/utils';
 import { useAppShell, usePlanner } from '@/context/AppContext';
@@ -8,6 +8,10 @@ import { useGravityContext } from '@/context/GravityContext';
 
 interface TimeboxDecisionState {
   taskId: string;
+  taskTitle: string;
+}
+
+interface BreakNotification {
   taskTitle: string;
 }
 
@@ -34,6 +38,7 @@ export function PomodoroTimer() {
   });
   const [lastWorkState, setLastWorkState] = useState<PomodoroState | null>(null);
   const [timeboxDecision, setTimeboxDecision] = useState<TimeboxDecisionState | null>(null);
+  const [breakNotification, setBreakNotification] = useState<BreakNotification | null>(null);
   // Holds task info from the completed work session so we can show the dialog after the break
   const pendingDecisionRef = useRef<TimeboxDecisionState | null>(null);
 
@@ -53,7 +58,7 @@ export function PomodoroTimer() {
       setState((prevState) => {
         const nextState = newState as PomodoroState;
 
-        // Work session just ended → break starting: log the session and stash task info
+        // Work session just ended → break starting: log the session, show break notification
         if (
           prevState.isRunning &&
           !prevState.isBreak &&
@@ -65,6 +70,11 @@ export function PomodoroTimer() {
             durationMins: prevState.totalTime / 60,
           });
 
+          // Show break notification
+          setBreakNotification({
+            taskTitle: prevState.currentTaskTitle || 'Focus block',
+          });
+
           const taskStillOpen = plannedTasks.find((task) => task.id === prevState.currentTaskId)?.status !== 'done';
           if (taskStillOpen) {
             pendingDecisionRef.current = {
@@ -74,17 +84,31 @@ export function PomodoroTimer() {
           }
         }
 
-        // Break just ended → show the rescope dialog now
+        // Break just ended → auto-continuing to next work session
         if (
           prevState.isBreak &&
           !nextState.isBreak &&
+          nextState.isRunning &&
           pendingDecisionRef.current
         ) {
           const pending = pendingDecisionRef.current;
           pendingDecisionRef.current = null;
           setActiveTask(pending.taskId);
           setTimeboxDecision(pending);
+          setBreakNotification(null);
           void window.api.window.showMain();
+        }
+
+        // Timer fully stopped (user hit stop)
+        if (prevState.isRunning && !nextState.isRunning) {
+          setBreakNotification(null);
+          if (pendingDecisionRef.current) {
+            const pending = pendingDecisionRef.current;
+            pendingDecisionRef.current = null;
+            setActiveTask(pending.taskId);
+            setTimeboxDecision(pending);
+            void window.api.window.showMain();
+          }
         }
 
         setLastWorkState(
@@ -142,11 +166,58 @@ export function PomodoroTimer() {
 
   return (
     <>
-      {timeboxDecision && (
+      {/* Break notification toast — shown when transitioning from work to break */}
+      {breakNotification && state.isBreak && (
+        <div className="fixed bottom-6 left-1/2 z-[140] w-full max-w-[520px] -translate-x-1/2 px-4 animate-slide-up">
+          <div className="flex items-center gap-4 rounded-2xl border border-sky-400/20 bg-bg-card/96 px-5 py-4 shadow-[0_20px_60px_rgba(0,0,0,0.45)] backdrop-blur-xl">
+            <Coffee className="w-5 h-5 text-sky-300 shrink-0" />
+            <div className="min-w-0 flex-1">
+              <div className="text-[9px] uppercase tracking-[0.18em] text-sky-300">Break time</div>
+              <div className="mt-0.5 truncate text-[13px] text-text-secondary">
+                {formatSeconds(state.timeRemaining)} remaining
+              </div>
+            </div>
+            <div className="flex shrink-0 gap-2 items-center">
+              {/* Extend +5m */}
+              <button
+                onClick={() => void window.api.pomodoro.extendBreak(5)}
+                title="Add 5 minutes"
+                className="h-8 px-3 rounded-full bg-[rgba(255,255,255,0.03)] border border-[rgba(255,255,255,0.06)] flex items-center justify-center gap-1.5 hover:border-[rgba(255,255,255,0.12)] transition-colors"
+              >
+                <Plus className="w-3 h-3 text-text-muted" />
+                <span className="text-[10px] text-text-muted">5m</span>
+              </button>
+              {/* Skip break */}
+              <button
+                onClick={() => void window.api.pomodoro.skip()}
+                title="Skip break"
+                className="h-8 px-3 rounded-full bg-[rgba(255,255,255,0.03)] border border-[rgba(255,255,255,0.06)] flex items-center justify-center gap-1.5 hover:border-[rgba(255,255,255,0.12)] transition-colors"
+              >
+                <FastForward className="w-3 h-3 text-text-muted" />
+                <span className="text-[10px] text-text-muted">Skip</span>
+              </button>
+              {/* Stop entirely */}
+              <button
+                onClick={() => {
+                  void window.api.pomodoro.stop();
+                  setBreakNotification(null);
+                }}
+                title="End session"
+                className="h-8 px-3 rounded-full bg-[rgba(255,255,255,0.03)] border border-[rgba(255,255,255,0.06)] flex items-center justify-center hover:border-[rgba(255,255,255,0.12)] transition-colors"
+              >
+                <Square className="w-3 h-3 text-text-muted" />
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Timebox decision toast — shown when break ends and next session auto-starts */}
+      {timeboxDecision && !state.isBreak && (
         <div className="fixed bottom-6 left-1/2 z-[140] w-full max-w-[520px] -translate-x-1/2 px-4">
           <div className="flex items-center gap-4 rounded-2xl border border-border bg-bg-card/96 px-5 py-4 shadow-[0_20px_60px_rgba(0,0,0,0.45)] backdrop-blur-xl">
             <div className="min-w-0 flex-1">
-              <div className="text-[9px] uppercase tracking-[0.18em] text-accent-warm">Timebox ended</div>
+              <div className="text-[9px] uppercase tracking-[0.18em] text-accent-warm">Next session started</div>
               <div className="mt-0.5 truncate font-display text-[15px] font-medium text-text-emphasis">
                 {timeboxDecision.taskTitle}
               </div>
@@ -161,17 +232,21 @@ export function PomodoroTimer() {
                   ? <Play className="w-3.5 h-3.5 text-text-muted" />
                   : <Pause className="w-3.5 h-3.5 text-text-muted" />}
               </button>
-              {/* Reset */}
+              {/* Stop */}
               <button
-                onClick={() => void window.api.pomodoro.stop()}
+                onClick={() => {
+                  void window.api.pomodoro.stop();
+                  setTimeboxDecision(null);
+                }}
                 className="w-9 h-9 rounded-full bg-[rgba(255,255,255,0.03)] border border-[rgba(255,255,255,0.06)] flex items-center justify-center hover:border-[rgba(255,255,255,0.12)] transition-colors"
               >
-                <RotateCcw className="w-3.5 h-3.5 text-text-muted" />
+                <Square className="w-3.5 h-3.5 text-text-muted" />
               </button>
               {/* Done — larger, rust-styled */}
               <button
                 onClick={() => {
                   void toggleTask(timeboxDecision.taskId);
+                  void window.api.pomodoro.stop();
                   setView('flow');
                   setTimeboxDecision(null);
                 }}
@@ -223,7 +298,7 @@ export function PomodoroTimer() {
 
         <div className="relative z-10 flex flex-col items-center gap-1 text-center">
           <span className="font-mono font-medium text-text-emphasis tracking-wider text-[28px]">
-            {formatSeconds(state.timeRemaining)}
+            {formatSeconds(!state.isRunning && state.timeRemaining === 0 ? 25 * 60 : state.timeRemaining)}
           </span>
           <span className={cn(
             'uppercase tracking-widest max-w-[170px] text-[10px]',

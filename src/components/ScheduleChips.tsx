@@ -4,6 +4,8 @@ import { DndProvider, useDrag, useDrop } from 'react-dnd';
 import { HTML5Backend } from 'react-dnd-html5-backend';
 import { Check, Clock } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { resolveGoalColor, withAlpha } from '@/lib/goalColors';
+import type { WeeklyGoal } from '@/types';
 import type { ScheduleChip } from '@/components/ink/morningBriefingUtils';
 import { formatTime } from '@/components/timeline/timelineUtils';
 
@@ -13,12 +15,14 @@ function DraggableChip({
   chip,
   index,
   totalChips,
+  goalColor,
   onToggle,
   onReorder,
 }: {
   chip: ScheduleChip;
   index: number;
   totalChips: number;
+  goalColor: string | null;
   onToggle: (index: number) => void;
   onReorder: (from: number, to: number) => void;
 }) {
@@ -80,7 +84,9 @@ function DraggableChip({
           borderRadius: 16,
           borderLeftWidth: 3,
           borderLeftStyle: 'solid',
-          borderLeftColor: chip.selected ? 'var(--color-accent-warm)' : 'var(--color-text-muted)',
+          borderLeftColor: goalColor
+            ? withAlpha(goalColor, chip.selected ? 0.85 : 0.5)
+            : chip.selected ? 'var(--color-accent-warm)' : 'var(--color-text-muted)',
           borderColor: chip.selected ? 'rgba(200,60,47,0.3)' : 'transparent',
           background: chip.selected ? 'var(--color-bg-chip-selected, rgba(200,60,47,0.15))' : 'var(--color-bg-chip)',
           color: chip.selected ? 'var(--color-text-primary)' : 'var(--color-text-secondary)',
@@ -97,6 +103,13 @@ function DraggableChip({
         >
           {chip.selected && <Check className="w-2.5 h-2.5 text-white" />}
         </div>
+        {goalColor && (
+          <div
+            className="w-2 h-2 rounded-full shrink-0"
+            style={{ background: withAlpha(goalColor, 0.8) }}
+            title={chip.matchedGoalId ? 'Matched to intention' : undefined}
+          />
+        )}
         <span className="flex-1 min-w-0 truncate">{chip.title}</span>
         <span className="flex items-center gap-1 text-[10px] shrink-0" style={{ color: 'var(--color-text-muted)' }}>
           <Clock className="w-3 h-3" />
@@ -112,6 +125,7 @@ export function ScheduleChips({
   chips,
   proposalLabel,
   isOverlay,
+  weeklyGoals = [],
   onToggle,
   onExecute,
   onReorder,
@@ -119,6 +133,7 @@ export function ScheduleChips({
   chips: ScheduleChip[];
   proposalLabel: string;
   isOverlay: boolean;
+  weeklyGoals?: WeeklyGoal[];
   onToggle: (index: number) => void;
   onExecute: () => void;
   onReorder: (fromIndex: number, toIndex: number) => void;
@@ -132,16 +147,22 @@ export function ScheduleChips({
         >
           Proposed schedule for {proposalLabel}
         </div>
-        {chips.map((chip, i) => (
-          <DraggableChip
-            key={chip.id}
-            chip={chip}
-            index={i}
-            totalChips={chips.length}
-            onToggle={onToggle}
-            onReorder={onReorder}
-          />
-        ))}
+        {chips.map((chip, i) => {
+          const goalIdx = weeklyGoals.findIndex((g) => g.id === chip.matchedGoalId);
+          const goal = goalIdx >= 0 ? weeklyGoals[goalIdx] : null;
+          const color = goal ? resolveGoalColor(goal.color, goalIdx) : null;
+          return (
+            <DraggableChip
+              key={chip.id}
+              chip={chip}
+              index={i}
+              totalChips={chips.length}
+              goalColor={color}
+              onToggle={onToggle}
+              onReorder={onReorder}
+            />
+          );
+        })}
         <button
           onClick={onExecute}
           disabled={chips.every((c) => !c.selected)}

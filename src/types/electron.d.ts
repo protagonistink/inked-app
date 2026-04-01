@@ -70,6 +70,7 @@ interface PomodoroAPI {
   pause: () => Promise<void>;
   stop: () => Promise<void>;
   skip: () => Promise<void>;
+  extendBreak: (extraMins: number) => Promise<void>;
   onTick: (callback: (state: PomodoroState) => void) => () => void;
 }
 

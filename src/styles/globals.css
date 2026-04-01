@@ -1124,3 +1124,10 @@
 [data-theme="light"] .workspace-header-meta {
   color: rgba(60, 50, 40, 0.3);
 }
+
+
+/* === FOCUS — Concluded strikethrough animation === */
+@keyframes drawStrike {
+  from { stroke-dashoffset: 1; }
+  to   { stroke-dashoffset: 0; }
+}

@@ -358,6 +358,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
     initialIsFirstLoadOfDay: workdayPromptsInit?.isFirstLoadOfDay ?? true,
   });
 
+  const localScheduleBlocks = useMemo(
+    () => scheduleBlocks.filter((b) => b.source === 'local'),
+    [scheduleBlocks],
+  );
+
   usePlannerPersistence({
     isInitialized,
     state: {
@@ -375,6 +380,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       monthlyPlan,
       dayEntries,
       userName,
+      localScheduleBlocks,
     },
   });
 

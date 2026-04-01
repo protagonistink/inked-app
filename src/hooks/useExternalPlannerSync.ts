@@ -33,6 +33,12 @@ export function useExternalPlannerSync({
       .filter((block): block is ScheduleBlock => block !== null);
 
     setScheduleBlocks((prev) => {
+      const fetchedCalendarIds = new Set(
+        events
+          .map((event) => event.calendarId)
+          .filter((calendarId): calendarId is string => Boolean(calendarId))
+      );
+
       // Preserve local metadata from existing blocks across calendar hydration.
       const nestingMap = new Map<string, string[]>();
       const taskByBlockId = new Map<string, string | undefined>();
@@ -51,7 +57,31 @@ export function useExternalPlannerSync({
         }
       }
 
-      const merged = eventBlocks;
+      // Keep local blocks, and preserve previously-synced focus blocks from
+      // calendars that were not part of this fetch so they don't vanish due to
+      // stale read settings.
+      const localBlocks = prev.filter((b) => b.source === 'local');
+      const preservedMissingCalendarBlocks = prev.filter((block) => (
+        block.source === 'gcal'
+        && Boolean(block.linkedTaskId)
+        && Boolean(block.calendarId)
+        && !fetchedCalendarIds.has(block.calendarId!)
+      ));
+
+      // Preserve recently-committed focus blocks that haven't propagated to
+      // the GCal API yet (avoids vanishing blocks due to eventual consistency).
+      const fetchedEventIds = new Set(eventBlocks.map((b) => b.eventId).filter(Boolean));
+      const preservedPendingBlocks = prev.filter((block) => (
+        block.source === 'gcal'
+        && Boolean(block.linkedTaskId)
+        && Boolean(block.eventId)
+        && fetchedCalendarIds.has(block.calendarId!)
+        && !fetchedEventIds.has(block.eventId)
+        // Only preserve if the linked task still references this event
+        && tasks.some((t) => t.scheduledEventId === block.eventId)
+      ));
+
+      const merged = [...localBlocks, ...preservedMissingCalendarBlocks, ...preservedPendingBlocks, ...eventBlocks];
 
       // Re-apply nesting, cached goal links, and readOnly status that the
       // fresh task payload failed to provide during this refresh.

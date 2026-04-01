@@ -6,6 +6,7 @@ import type {
   DayEntry,
   MonthlyPlan,
   PlannedTask,
+  ScheduleBlock,
   TimeLogEntry,
   WeeklyGoal,
 } from '@/types';
@@ -31,6 +32,7 @@ export interface StoredPlannerState {
   monthlyPlan?: MonthlyPlan | null;
   dayEntries?: DayEntry[];
   userName?: string;
+  localScheduleBlocks?: ScheduleBlock[];
 }
 
 interface PersistenceOptions {

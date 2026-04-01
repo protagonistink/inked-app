@@ -172,6 +172,7 @@ export interface InboxItem {
   priority?: string;
   active?: boolean;
   workMode?: WorkMode;
+  asanaProject?: string;
 }
 
 export interface DailyPlan {
@@ -361,6 +362,7 @@ export interface BriefingContext {
     };
   };
   rituals?: Array<{ title: string; estimateMins: number }>;
+  candidateTasks?: Array<{ title: string; estimateMins: number; weeklyGoal: string }>;
 }
 
 export interface InkJournalEntry {

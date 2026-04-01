@@ -124,12 +124,13 @@ function startTimer() {
           state.timeRemaining = state.totalTime;
 
         } else {
-          // Break done — ready for next work session
+          // Break done — auto-start next work session with the same task
           playCue('break-end');
-          state.isRunning = false;
+          const config = getConfig();
           state.isBreak = false;
-          state.timeRemaining = 0;
-          focusTimerClose?.();
+          state.totalTime = config.workMins * 60;
+          state.timeRemaining = config.workMins * 60;
+          // isRunning stays true — seamless transition into next pomodoro
         }
       }
 
@@ -160,6 +161,14 @@ export function registerTimerHandlers() {
 
   ipcMain.handle('pomodoro:skip', () => {
     state.timeRemaining = 0; // triggers completion on next tick
+  });
+
+  ipcMain.handle('pomodoro:extend-break', (_event, extraMins: number) => {
+    if (!state.isBreak) return;
+    const extra = Math.min(Math.max(extraMins, 1), 30) * 60;
+    state.timeRemaining += extra;
+    state.totalTime += extra;
+    broadcast();
   });
 
   ipcMain.handle('pomodoro:load', (_event, taskId: string, taskTitle?: string) => {

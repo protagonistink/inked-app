@@ -23,7 +23,7 @@ import { BlockCard } from './BlockCard';
 
 export function Timeline() {
   const { isLight, isFocus } = useTheme();
-  const { startDay } = useAppShell();
+  const { startDay, enterFocus } = useAppShell();
   const { refreshExternalData, syncStatus, dayCommitInfo } = useAppStatus();
   const {
     scheduleBlocks,
@@ -36,6 +36,7 @@ export function Timeline() {
     addAdHocBlock,
     toggleRitualSkipped,
     currentBlock,
+    setActiveTask,
     workdayStart,
     setWorkdayStart,
     workdayEnd,
@@ -386,6 +387,33 @@ export function Timeline() {
 
   const currentBlockId = currentBlock?.id ?? null;
 
+  const focusTargetId = useMemo(() => {
+    if (!isTodayView) return null;
+    let next: string | null = null;
+    for (const b of scheduleBlocks) {
+      if (b.kind === 'break') continue;
+
+      // Resolve task ID: linkedTaskId first, then title match for unlinked hard blocks
+      let taskId: string | null = b.linkedTaskId ?? null;
+      if (!taskId) {
+        const bTitle = b.title.toLowerCase().trim();
+        const matched = plannedTasks.find((t) => {
+          if (t.status === 'done' || t.status === 'cancelled') return false;
+          const tTitle = t.title.toLowerCase().trim();
+          return tTitle === bTitle || bTitle.startsWith(tTitle + ' ') || bTitle.startsWith(tTitle + '(');
+        });
+        taskId = matched?.id ?? null;
+      }
+      if (!taskId) continue;
+
+      const start = b.startHour * 60 + b.startMin;
+      const end = start + b.durationMins;
+      if (start <= currentMinute && currentMinute < end) return taskId;
+      if (start > currentMinute && !next) next = taskId;
+    }
+    return next;
+  }, [isTodayView, scheduleBlocks, currentMinute, plannedTasks]);
+
   // Daily Arc summary (kept for future use, display removed from header)
   useMemo(() => {
     const focusBlocks = scheduleBlocks.filter((b) => b.kind === 'focus');
@@ -580,7 +608,7 @@ export function Timeline() {
       {dayCommitInfo.state === 'committed' && dayCommitInfo.totalBlocks > 0 && (
         <button
           onClick={startDay}
-          className="absolute bottom-6 right-6 z-30 px-4 py-3 text-[10px] font-sans font-semibold uppercase tracking-[0.28em] text-text-emphasis shadow-[0_18px_38px_rgba(0,0,0,0.16)] backdrop-blur-md transition-colors hover:text-text-primary"
+          className="no-drag absolute bottom-6 right-6 z-30 px-4 py-3 text-[10px] font-sans font-semibold uppercase tracking-[0.28em] text-text-emphasis shadow-[0_18px_38px_rgba(0,0,0,0.16)] backdrop-blur-md transition-colors hover:text-text-primary"
           style={{
             border: '1px solid color-mix(in srgb, var(--color-accent-warm) 35%, var(--color-border))',
             background: 'color-mix(in srgb, var(--color-bg-elevated) 90%, transparent)',
@@ -589,6 +617,27 @@ export function Timeline() {
           <span className="flex items-center gap-3">
             <span className="h-px w-5 bg-accent-warm/70" />
             <span>Get To Work</span>
+            <span className="text-accent-warm">→</span>
+          </span>
+        </button>
+      )}
+
+      {/* Focus button — bottom-right, shown during executing mode when a task block is current */}
+      {focusTargetId && (
+        <button
+          onClick={() => {
+            setActiveTask(focusTargetId);
+            enterFocus(focusTargetId);
+          }}
+          className="no-drag absolute bottom-6 right-6 z-30 px-4 py-3 text-[10px] font-sans font-semibold uppercase tracking-[0.28em] text-text-emphasis shadow-[0_18px_38px_rgba(0,0,0,0.16)] backdrop-blur-md transition-colors hover:text-text-primary"
+          style={{
+            border: '1px solid color-mix(in srgb, var(--color-accent-warm) 35%, var(--color-border))',
+            background: 'color-mix(in srgb, var(--color-bg-elevated) 90%, transparent)',
+          }}
+        >
+          <span className="flex items-center gap-3">
+            <span className="h-px w-5 bg-accent-warm/70" />
+            <span>Focus</span>
             <span className="text-accent-warm">→</span>
           </span>
         </button>

@@ -40,6 +40,7 @@ contextBridge.exposeInMainWorld('api', {
     pause: () => ipcRenderer.invoke('pomodoro:pause'),
     stop: () => ipcRenderer.invoke('pomodoro:stop'),
     skip: () => ipcRenderer.invoke('pomodoro:skip'),
+    extendBreak: (extraMins: number) => ipcRenderer.invoke('pomodoro:extend-break', extraMins),
     onTick: (callback: (state: PomodoroState) => void) => {
       const handler = (_event: unknown, state: PomodoroState) => callback(state);
       ipcRenderer.on('pomodoro:tick', handler);

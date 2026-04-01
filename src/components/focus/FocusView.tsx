@@ -168,8 +168,6 @@ function InitiationScreen({
 interface ActiveProps {
   timerState: PomodoroState | null;
   elapsedSeconds: number;
-  taskTitle: string;
-  goalTitle?: string;
   taskIndex: number;
   totalTasks: number;
   onEnd: () => void;
@@ -178,8 +176,6 @@ interface ActiveProps {
 function ActiveScreen({
   timerState,
   elapsedSeconds,
-  taskTitle,
-  goalTitle,
   taskIndex,
   totalTasks,
   onEnd,
@@ -217,28 +213,13 @@ function ActiveScreen({
         >
           <ApertureRings progress={progress} />
 
-          {/* Ghost label in the middle ring band — the intention, barely present */}
-          <div
-            className="absolute left-0 right-0 flex justify-center pointer-events-none select-none"
-            style={{ top: '41%' }}
-          >
-            <span
-              className="font-serif italic text-text-emphasis text-center leading-snug"
-              style={{
-                fontSize: 15,
-                opacity: 0.1,
-                maxWidth: '55%',
-                display: 'block',
-              }}
-            >
-              {goalTitle ?? taskTitle}
-            </span>
-          </div>
-
           {/* Timer — the center of everything */}
           <div className="absolute inset-0 flex flex-col items-center justify-center gap-1.5 select-none">
-            <span className="font-mono text-[9px] tracking-[0.3em] uppercase text-accent-warm/60">
-              focusing
+            <span className={cn(
+              'font-mono text-[9px] tracking-[0.3em] uppercase',
+              timerState?.isBreak ? 'text-sky-300/60' : 'text-accent-warm/60'
+            )}>
+              {timerState?.isBreak ? 'break' : 'focusing'}
             </span>
             <span
               className="font-mono font-light text-text-emphasis tabular-nums leading-none"
@@ -252,14 +233,41 @@ function ActiveScreen({
 
       {/* Bottom affordances — whisper-quiet until needed */}
       <div className="absolute bottom-7 left-0 right-0 flex justify-center items-center gap-5 select-none">
-        <p className="font-mono text-[9px] tracking-[0.12em] text-text-whisper">space to pause</p>
-        <span className="text-text-whisper" aria-hidden>·</span>
-        <button
-          onClick={onEnd}
-          className="font-mono text-[9px] tracking-[0.12em] text-text-whisper hover:text-text-muted transition-colors duration-150 cursor-pointer"
-        >
-          end session
-        </button>
+        {timerState?.isBreak ? (
+          <>
+            <button
+              onClick={() => void window.api.pomodoro.extendBreak(5)}
+              className="font-mono text-[9px] tracking-[0.12em] text-text-whisper hover:text-text-muted transition-colors duration-150 cursor-pointer"
+            >
+              +5 min
+            </button>
+            <span className="text-text-whisper" aria-hidden>·</span>
+            <button
+              onClick={() => void window.api.pomodoro.skip()}
+              className="font-mono text-[9px] tracking-[0.12em] text-text-whisper hover:text-text-muted transition-colors duration-150 cursor-pointer"
+            >
+              skip break
+            </button>
+            <span className="text-text-whisper" aria-hidden>·</span>
+            <button
+              onClick={onEnd}
+              className="font-mono text-[9px] tracking-[0.12em] text-text-whisper hover:text-text-muted transition-colors duration-150 cursor-pointer"
+            >
+              end session
+            </button>
+          </>
+        ) : (
+          <>
+            <p className="font-mono text-[9px] tracking-[0.12em] text-text-whisper">space to pause</p>
+            <span className="text-text-whisper" aria-hidden>·</span>
+            <button
+              onClick={onEnd}
+              className="font-mono text-[9px] tracking-[0.12em] text-text-whisper hover:text-text-muted transition-colors duration-150 cursor-pointer"
+            >
+              end session
+            </button>
+          </>
+        )}
       </div>
     </>
   );
@@ -317,17 +325,47 @@ interface ConcludedProps {
   elapsedSeconds: number;
   taskTitle: string;
   taskDone: boolean;
+  taskIndex: number;
+  totalTasks: number;
+  onToggleDone: () => Promise<void>;
   onExit: () => void;
 }
 
-function ConcludedScreen({ elapsedSeconds, taskTitle, taskDone, onExit }: ConcludedProps) {
+function ConcludedScreen({
+  elapsedSeconds,
+  taskTitle,
+  taskDone,
+  taskIndex,
+  totalTasks,
+  onToggleDone,
+  onExit,
+}: ConcludedProps) {
+  const [isStruck, setIsStruck] = useState(taskDone);
+
+  useEffect(() => {
+    setIsStruck(taskDone);
+  }, [taskDone]);
+
   const elapsedMins = Math.floor(elapsedSeconds / 60);
   const elapsedSecs = elapsedSeconds % 60;
 
+  async function handleToggleDone() {
+    setIsStruck((prev) => !prev);
+    await onToggleDone();
+  }
+
   return (
-    <div className="absolute inset-0 flex flex-col items-center justify-center gap-8 text-center px-12">
-      {/* "Done." — definitive. Cormorant without italic here:
-          closing statement, not a feeling. */}
+    <div className="absolute inset-0 flex flex-col items-center justify-center gap-7 text-center px-12">
+      {/* Corner anchor — session position */}
+      <div className="absolute top-7 left-8 leading-snug select-none">
+        <p className="font-mono text-[9px] tracking-[0.14em] uppercase text-text-whisper">Session</p>
+        <p className="font-mono text-[12px] tracking-[0.04em] text-text-muted">
+          {taskIndex} of {totalTasks}
+        </p>
+      </div>
+
+      {/* "Done." — definitive. Cormorant upright, no italic.
+          This is a closing statement, not a feeling. */}
       <h1
         className="font-serif text-text-emphasis leading-none select-none"
         style={{ fontSize: 'clamp(72px, 10vw, 112px)' }}
@@ -335,40 +373,85 @@ function ConcludedScreen({ elapsedSeconds, taskTitle, taskDone, onExit }: Conclu
         Done.
       </h1>
 
-      {/* Duration stat — the only number that matters */}
-      <div className="flex items-baseline gap-1.5 select-none">
-        <span
-          className="font-display font-light text-text-emphasis tabular-nums leading-none"
-          style={{ fontSize: 52 }}
-        >
-          {String(elapsedMins).padStart(2, '0')}
-        </span>
-        <span className="font-display font-light text-text-muted" style={{ fontSize: 18 }}>m</span>
-        <span
-          className="font-display font-light text-text-emphasis tabular-nums leading-none"
-          style={{ fontSize: 52 }}
-        >
-          {String(elapsedSecs).padStart(2, '0')}
-        </span>
-        <span className="font-display font-light text-text-muted" style={{ fontSize: 18 }}>s</span>
+      {/* Duration — editorial stat label + large number */}
+      <div className="flex flex-col items-center gap-1.5 select-none">
+        <p className="font-mono text-[9px] tracking-[0.2em] uppercase text-text-whisper">
+          01 / duration
+        </p>
+        <div className="flex items-baseline gap-1.5">
+          <span
+            className="font-display font-light text-text-emphasis tabular-nums leading-none"
+            style={{ fontSize: 52 }}
+          >
+            {String(elapsedMins).padStart(2, '0')}
+          </span>
+          <span className="font-display font-light text-text-muted" style={{ fontSize: 18 }}>m</span>
+          <span
+            className="font-display font-light text-text-emphasis tabular-nums leading-none"
+            style={{ fontSize: 52 }}
+          >
+            {String(elapsedSecs).padStart(2, '0')}
+          </span>
+          <span className="font-display font-light text-text-muted" style={{ fontSize: 18 }}>s</span>
+        </div>
       </div>
 
-      {/* Task context */}
-      <div className="flex flex-col items-center gap-2">
-        <p className="font-serif italic text-text-secondary text-[17px] max-w-md leading-snug select-none">
-          {taskTitle}
-        </p>
-        <p
+      {/* Thin divider */}
+      <div className="w-full max-w-xs h-px" style={{ background: 'var(--color-border-subtle)' }} />
+
+      {/* Task — click to draw a strikethrough and mark done */}
+      <button
+        onClick={() => void handleToggleDone()}
+        className="group flex flex-col items-center gap-2 cursor-pointer"
+        aria-label={isStruck ? 'Mark incomplete' : 'Mark done'}
+      >
+        <div className="relative inline-block">
+          <span
+            className={cn(
+              'font-serif italic leading-snug transition-colors duration-300',
+              isStruck
+                ? 'text-text-whisper'
+                : 'text-text-secondary group-hover:text-text-primary',
+            )}
+            style={{ fontSize: 17 }}
+          >
+            {taskTitle}
+          </span>
+
+          {/* Hand-drawn strikethrough — SVG line animates across the title */}
+          {isStruck && (
+            <svg
+              className="absolute inset-0 w-full h-full pointer-events-none overflow-visible"
+              preserveAspectRatio="none"
+            >
+              <line
+                x1="0%" y1="54%" x2="100%" y2="52%"
+                stroke="rgba(255,255,255,0.38)"
+                strokeWidth="1"
+                strokeLinecap="round"
+                pathLength="1"
+                style={{
+                  strokeDasharray: '1',
+                  animation: 'drawStrike 0.55s ease-out forwards',
+                }}
+              />
+            </svg>
+          )}
+        </div>
+
+        <span
           className={cn(
-            'font-mono text-[9px] tracking-[0.2em] uppercase',
-            taskDone ? 'text-accent-warm/70' : 'text-text-whisper'
+            'font-mono text-[9px] tracking-[0.2em] uppercase transition-colors duration-300',
+            isStruck
+              ? 'text-accent-warm/70'
+              : 'text-text-whisper group-hover:text-text-muted',
           )}
         >
-          {taskDone ? '● complete' : '○ in progress'}
-        </p>
-      </div>
+          {isStruck ? '● done' : '○ mark done'}
+        </span>
+      </button>
 
-      {/* Return — no fanfare */}
+      {/* Return */}
       <button
         onClick={onExit}
         className="font-mono text-[11px] tracking-[0.18em] uppercase border border-border hover:border-border-hover text-text-muted hover:text-text-primary px-10 py-3 rounded-[2px] transition-all duration-150 cursor-pointer"
@@ -387,13 +470,16 @@ interface FocusViewProps {
 }
 
 export function FocusView({ taskId, onExit }: FocusViewProps) {
-  const { plannedTasks, weeklyGoals } = usePlanner();
+  const { plannedTasks, weeklyGoals, toggleTask } = usePlanner();
   const { enterFocusMode, exitFocusMode } = useTheme();
 
   const [phase, setPhase] = useState<FocusPhase>('initiation');
   const [selectedDuration, setSelectedDuration] = useState(25);
   const [timerState, setTimerState] = useState<PomodoroState | null>(null);
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
+  // Track cumulative elapsed across work/break cycles so the counter doesn't reset
+  const cumulativeElapsedRef = useRef(0);
+  const prevTimerStateRef = useRef<PomodoroState | null>(null);
 
   // Ref so keydown closure always reads current phase without stale capture
   const phaseRef = useRef<FocusPhase>('initiation');
@@ -423,12 +509,32 @@ export function FocusView({ taskId, onExit }: FocusViewProps) {
   // IPC tick drives phase transitions
   useEffect(() => {
     const cleanup = window.api.pomodoro.onTick((state) => {
+      const prev = prevTimerStateRef.current;
+
+      // Detect break→work transition: show concluded so user can decide to continue or stop
+      if (prev?.isBreak && !state.isBreak && state.isRunning) {
+        // Accumulate the break duration into cumulative total
+        if (prev.totalTime > 0) {
+          cumulativeElapsedRef.current += prev.totalTime;
+        }
+        setPhase('concluded');
+      }
+
+      // Detect work→break transition: accumulate work duration
+      if (prev && !prev.isBreak && state.isBreak && prev.totalTime > 0) {
+        cumulativeElapsedRef.current += prev.totalTime;
+      }
+
       setTimerState(state);
+      prevTimerStateRef.current = state;
+
       if (state.isRunning && !state.isPaused) {
-        setPhase((prev) => (prev === 'concluded' ? 'concluded' : 'active'));
-        setElapsedSeconds(Math.max(0, state.totalTime - state.timeRemaining));
+        const currentSegmentElapsed = Math.max(0, state.totalTime - state.timeRemaining);
+        setElapsedSeconds(cumulativeElapsedRef.current + currentSegmentElapsed);
+        // Only auto-transition to active if not in concluded (user hasn't seen the decision yet)
+        setPhase((p) => (p === 'concluded' || p === 'initiation') ? p : 'active');
       } else if (state.isRunning && state.isPaused) {
-        setPhase((prev) => (prev === 'concluded' ? 'concluded' : 'paused'));
+        setPhase((p) => (p === 'concluded' ? 'concluded' : 'paused'));
       }
     });
     return cleanup;
@@ -478,8 +584,6 @@ export function FocusView({ taskId, onExit }: FocusViewProps) {
         <ActiveScreen
           timerState={timerState}
           elapsedSeconds={elapsedSeconds}
-          taskTitle={taskTitle}
-          goalTitle={linkedGoal?.title}
           taskIndex={taskIndex}
           totalTasks={plannedTasks.length}
           onEnd={() => void handleEnd()}
@@ -499,7 +603,10 @@ export function FocusView({ taskId, onExit }: FocusViewProps) {
           elapsedSeconds={elapsedSeconds}
           taskTitle={taskTitle}
           taskDone={taskDone}
-          onExit={onExit}
+          taskIndex={taskIndex}
+          totalTasks={plannedTasks.length}
+          onToggleDone={() => toggleTask(taskId)}
+          onExit={timerState?.isRunning ? () => setPhase('active') : onExit}
         />
       )}
     </div>

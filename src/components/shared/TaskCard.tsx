@@ -371,6 +371,7 @@ export function TaskCard({
               task.source === 'asana' ? 'bg-accent-warm/10 text-accent-warm' : 'bg-text-muted/10 text-text-muted'
             )}>
               {task.source === 'asana' ? 'Asana' : 'Local'}
+              {task.asanaProject && <> · {task.asanaProject}</>}
             </span>
           </div>
           <p className="mt-auto text-[9px] text-text-muted/40 italic">Click to flip back</p>

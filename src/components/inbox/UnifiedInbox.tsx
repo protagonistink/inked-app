@@ -165,7 +165,8 @@ function IncomingCard({
               </div>
             ) : (
               <div className="text-[9px] uppercase tracking-wider text-text-whisper mt-0.5">
-                {item.source === 'asana' ? 'ASANA' : item.source === 'gcal' ? 'CALENDAR' : item.source.toUpperCase()}
+                {item.source === 'asana' ? 'Asana' : item.source === 'gcal' ? 'Calendar' : 'Local'}
+                {item.asanaProject && <> · {item.asanaProject}</>}
               </div>
             )}
           </div>
@@ -334,7 +335,7 @@ export function UnifiedInbox({ collapsed = false }: { collapsed?: boolean }) {
   const [isAddingRitual, setIsAddingRitual] = useState(false);
   const [ritualDraft, setRitualDraft] = useState('');
   const [draftTitle, setDraftTitle] = useState('');
-  const [filter, setFilter] = useState<'all' | 'asana' | 'unscheduled'>('all');
+  const [filter, setFilter] = useState<string>('all');
 
   const primaryGoalId = weeklyGoals[0]?.id ?? null;
   const planningDateKey = format(viewDate, 'yyyy-MM-dd');
@@ -352,13 +353,27 @@ export function UnifiedInbox({ collapsed = false }: { collapsed?: boolean }) {
     });
   }, [candidateItems, plannedTasks, primaryGoalId, planningDateKey]);
 
+  // Unique Asana project names for filter pills
+  const asanaProjects = useMemo(() => {
+    const projects = new Set<string>();
+    for (const item of allInboxItems) {
+      if (item.source === 'asana' && item.asanaProject) {
+        projects.add(item.asanaProject);
+      }
+    }
+    return Array.from(projects).sort();
+  }, [allInboxItems]);
+
   const inboxItems = useMemo(() => {
-    if (filter === 'asana') return allInboxItems.filter((item) => item.source === 'asana');
     if (filter === 'unscheduled') {
       return allInboxItems.filter((item) => {
         const task = plannedTasks.find((t) => t.id === item.id);
         return task?.status !== 'scheduled';
       });
+    }
+    if (filter !== 'all') {
+      // Filter by project name
+      return allInboxItems.filter((item) => item.asanaProject === filter);
     }
     return allInboxItems;
   }, [allInboxItems, filter, plannedTasks]);
@@ -469,23 +484,23 @@ export function UnifiedInbox({ collapsed = false }: { collapsed?: boolean }) {
           </div>
         </div>
         {/* Filter pills */}
-        <div className="flex items-center gap-1.5 px-6 pb-3">
+        <div className="flex items-center gap-1.5 px-6 pb-3 overflow-x-auto hide-scrollbar">
           {([
-            { key: 'all' as const, label: 'All', count: allInboxItems.length },
-            { key: 'asana' as const, label: 'Asana' },
-            { key: 'unscheduled' as const, label: 'Unscheduled' },
-          ]).map((pill) => (
+            { key: 'all', label: 'All', count: allInboxItems.length },
+            ...asanaProjects.map((project) => ({ key: project, label: project })),
+            { key: 'unscheduled', label: 'Unscheduled' },
+          ] as Array<{ key: string; label: string; count?: number }>).map((pill) => (
             <button
               key={pill.key}
               onClick={() => setFilter(pill.key)}
               className={cn(
-                'px-3 py-1 rounded-full text-[10px] uppercase tracking-wider transition-colors',
+                'px-3 py-1 rounded-full text-[10px] uppercase tracking-wider transition-colors whitespace-nowrap shrink-0',
                 filter === pill.key
                   ? 'bg-surface text-text-primary border border-border'
                   : 'text-text-muted hover:text-text-primary hover:bg-surface/50'
               )}
             >
-              {pill.label}{'count' in pill ? ` ${pill.count}` : ''}
+              {pill.label}{pill.count != null ? ` ${pill.count}` : ''}
             </button>
           ))}
         </div>

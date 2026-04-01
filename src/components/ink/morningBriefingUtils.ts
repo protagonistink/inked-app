@@ -13,6 +13,7 @@ interface BuildBriefingContextOptions {
   weeklyGoals: WeeklyGoal[];
   committedTasks: PlannedTask[];
   doneTasks: PlannedTask[];
+  candidateTasks?: PlannedTask[];
   workdayStart: { hour: number; min: number };
   workdayEnd: { hour: number; min: number };
   scheduleBlocks: ScheduleBlock[];
@@ -32,6 +33,7 @@ export async function buildBriefingContext({
   weeklyGoals,
   committedTasks,
   doneTasks,
+  candidateTasks,
   workdayStart,
   workdayEnd,
   scheduleBlocks,
@@ -137,6 +139,14 @@ export async function buildBriefingContext({
     rituals: rituals
       ?.filter((r) => !(r.skippedDates ?? []).includes(planningDate))
       .map((r) => ({ title: r.title, estimateMins: r.estimateMins ?? 30 })),
+    candidateTasks: candidateTasks?.map((task) => {
+      const goal = task.weeklyGoalId ? weeklyGoals.find((item) => item.id === task.weeklyGoalId) : null;
+      return {
+        title: task.title,
+        estimateMins: task.estimateMins || 45,
+        weeklyGoal: goal?.title || 'Unassigned',
+      };
+    }),
   };
 }
 

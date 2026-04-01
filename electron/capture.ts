@@ -1,4 +1,4 @@
-import { app, ipcMain, BrowserWindow } from 'electron';
+import { ipcMain, BrowserWindow } from 'electron';
 import { store } from './store';
 import { getSecure } from './secure-store';
 import crypto from 'node:crypto';
@@ -105,9 +105,5 @@ export function registerCaptureHandlers(
 
   ipcMain.handle('capture:hide-capture-window', () => {
     getCaptureWindow()?.hide();
-    // If the main window isn't open, return focus to whatever app the user was in
-    if (process.platform === 'darwin' && !getMainWindow()?.isVisible()) {
-      app.hide();
-    }
   });
 }

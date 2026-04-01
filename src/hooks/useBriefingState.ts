@@ -11,7 +11,7 @@ import { detectInkMode } from '@/lib/ink-mode';
 import { stripStructuredAssistantBlocks, buildBriefingContext } from '@/components/ink/morningBriefingUtils';
 import type { CommitChip, ScheduleChip } from '@/components/ink/morningBriefingUtils';
 import type { ChatMessage } from '@/types/electron';
-import type { ChatThreadSummary, InkMode } from '@/types';
+import type { ChatThreadSummary, InkMode, WeeklyGoal } from '@/types';
 import type { Phase, BriefingVariant } from '@/types/briefing';
 
 export interface BriefingStateValues {
@@ -42,6 +42,7 @@ export interface BriefingStateValues {
   inputRef: RefObject<HTMLTextAreaElement>;
   fileInputRef: RefObject<HTMLInputElement>;
   viewDate: Date;
+  weeklyGoals: WeeklyGoal[];
   addRitual: (title: string) => void;
   skipRitual: (index: number) => void;
 }
@@ -110,6 +111,7 @@ export function useBriefingState({
   const [resolvedInkMode, setResolvedInkMode] = useState<InkMode | null>(null);
   const [threads, setThreads] = useState<ChatThreadSummary[]>([]);
   const [historyReady, setHistoryReady] = useState(false);
+  const [actionError, setActionError] = useState<string | null>(null);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -198,10 +200,13 @@ export function useBriefingState({
     (t) => t.status === 'done' && dailyPlan.committedTaskIds.includes(t.id)
   );
 
+  const candidateTasks = plannedTasks.filter((t) => t.status === 'candidate');
+
   const buildContext = useCallback(() => buildBriefingContext({
     weeklyGoals,
     committedTasks,
     doneTasks,
+    candidateTasks,
     workdayStart,
     workdayEnd,
     scheduleBlocks,
@@ -211,7 +216,7 @@ export function useBriefingState({
     interviewStep: interview.state.interviewStepRef.current ?? undefined,
     interviewAnswers: interview.state.interviewAnswersRef.current ?? undefined,
     rituals,
-  }), [weeklyGoals, committedTasks, doneTasks, workdayStart, workdayEnd, scheduleBlocks, viewDate, monthlyPlan, promptInkMode, interview.state.interviewStepRef, interview.state.interviewAnswersRef, rituals]);
+  }), [weeklyGoals, committedTasks, doneTasks, candidateTasks, workdayStart, workdayEnd, scheduleBlocks, viewDate, monthlyPlan, promptInkMode, interview.state.interviewStepRef, interview.state.interviewAnswersRef, rituals]);
 
   const {
     streamingContent,
@@ -276,6 +281,7 @@ export function useBriefingState({
   const handleStartDay = useCallback((intention: string) => {
     if (isStreaming) return;
     void (async () => {
+      setActionError(null);
       await ensureActiveThread('briefing');
       const userMsg: ChatMessage = { role: 'user', content: intention };
       const newMessages = [userMsg];
@@ -288,6 +294,7 @@ export function useBriefingState({
   const startConversation = useCallback((prompt: string, nextAttachments: NonNullable<ChatMessage['attachments']> = []) => {
     if ((!prompt.trim() && nextAttachments.length === 0) || isStreaming) return;
     void (async () => {
+      setActionError(null);
       const nextPhase = phase === 'interview'
         ? 'interview'
         : prompt === 'Run my morning briefing.'
@@ -334,6 +341,7 @@ export function useBriefingState({
     setMessages([]);
     proposal.actions.clearProposal();
     setInputValue('');
+    setActionError(null);
     attach.actions.clearAttachments();
     setPhase('idle');
     interview.actions.resetInterview();
@@ -345,6 +353,7 @@ export function useBriefingState({
     setActiveThreadId(thread.id);
     setMessages(thread.messages);
     setInputValue('');
+    setActionError(null);
     attach.actions.clearAttachments();
     proposal.actions.clearProposal();
     interview.actions.resetInterview();
@@ -365,6 +374,7 @@ export function useBriefingState({
     if (phase === 'committing') {
       proposal.actions.clearProposal();
     }
+    setActionError(null);
     startConversation(prompt, nextAttachments);
   }, [attach.state.attachments.length, attach.actions, inputValue, isStreaming, phase, proposal.actions, startConversation]);
 
@@ -380,9 +390,14 @@ export function useBriefingState({
   }, [proposal.actions, dailyPlan, bringForward, addLocalTask, setViewDate, onClose]);
 
   const handleExecuteSchedule = useCallback(async () => {
-    await proposal.actions.executeSchedule({
-      addLocalTask, scheduleTaskBlock, clearFocusBlocks, setViewDate, onClose,
-    });
+    setActionError(null);
+    try {
+      await proposal.actions.executeSchedule({
+        addLocalTask, scheduleTaskBlock, clearFocusBlocks, setViewDate, onClose,
+      });
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : 'Failed to lock the schedule into Google Calendar.');
+    }
   }, [proposal.actions, addLocalTask, scheduleTaskBlock, clearFocusBlocks, setViewDate, onClose]);
 
   const handleKeyDown = (e: KeyboardEvent) => {
@@ -416,7 +431,7 @@ export function useBriefingState({
       streamingContent,
       visibleStreamingContent,
       isStreaming,
-      error,
+      error: actionError || error,
       threads,
       activeThreadId,
       activeThreadTitle,
@@ -426,6 +441,7 @@ export function useBriefingState({
       inputRef,
       fileInputRef: attach.state.fileInputRef,
       viewDate,
+      weeklyGoals,
       addRitual,
       skipRitual: proposal.actions.skipRitual,
     },
