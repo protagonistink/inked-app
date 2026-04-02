@@ -622,14 +622,14 @@ export function Timeline() {
         </button>
       )}
 
-      {/* Focus button — bottom-right, shown during executing mode when a task block is current */}
+      {/* Focus button — bottom-left of timeline, avoids InkFab in bottom-right */}
       {focusTargetId && (
         <button
           onClick={() => {
             setActiveTask(focusTargetId);
             enterFocus(focusTargetId);
           }}
-          className="no-drag absolute bottom-6 right-6 z-30 px-4 py-3 text-[10px] font-sans font-semibold uppercase tracking-[0.28em] text-text-emphasis shadow-[0_18px_38px_rgba(0,0,0,0.16)] backdrop-blur-md transition-colors hover:text-text-primary"
+          className="no-drag absolute bottom-6 left-6 z-30 px-4 py-3 text-[10px] font-sans font-semibold uppercase tracking-[0.28em] text-text-emphasis shadow-[0_18px_38px_rgba(0,0,0,0.16)] backdrop-blur-md transition-colors hover:text-text-primary"
           style={{
             border: '1px solid color-mix(in srgb, var(--color-accent-warm) 35%, var(--color-border))',
             background: 'color-mix(in srgb, var(--color-bg-elevated) 90%, transparent)',

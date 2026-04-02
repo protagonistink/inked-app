@@ -4,6 +4,7 @@ interface FocusCapacityProps {
   totalHours: number;
   occupancyRatio: number;
   label: string;
+  pastWorkday?: boolean;
 }
 
 function formatHours(hours: number) {
@@ -15,23 +16,27 @@ export function FocusCapacity({
   hoursRemaining,
   scheduledHours,
   occupancyRatio,
+  pastWorkday,
 }: FocusCapacityProps) {
   return (
-    <div className="py-1 select-none">
-      <div className="flex items-baseline gap-2.5">
-        <span className="text-[18px] leading-none font-mono text-text-emphasis">
-          {formatHours(hoursRemaining)}
-        </span>
-        <span className="text-[10px] uppercase tracking-[0.14em] text-text-muted">open</span>
-        <span className="text-[10px] text-text-muted/30">·</span>
-        <span className="text-[18px] leading-none font-mono text-text-secondary/50">
-          {formatHours(scheduledHours)}
-        </span>
-        <span className="text-[10px] uppercase tracking-[0.14em] text-text-muted">booked</span>
+    <div className={`select-none transition-opacity duration-300 ${pastWorkday ? 'opacity-40' : ''}`}>
+      <div className="flex items-end gap-4">
+        <div className="min-w-0">
+          <div className="ui-section-label">Open</div>
+          <span className="ui-metric mt-2 block">
+            {formatHours(hoursRemaining)}
+          </span>
+        </div>
+        <div className="min-w-0">
+          <div className="ui-section-label">Booked</div>
+          <span className="ui-metric mt-2 block text-text-secondary/60">
+            {formatHours(scheduledHours)}
+          </span>
+        </div>
       </div>
-      <div className="mt-2 h-px overflow-hidden bg-border">
+      <div className="mt-3 h-1 overflow-hidden rounded-full bg-border">
         <div
-          className="h-full bg-accent-warm/70"
+          className="h-full rounded-full bg-accent-warm/70 transition-all duration-500"
           style={{ width: `${occupancyRatio * 100}%` }}
         />
       </div>

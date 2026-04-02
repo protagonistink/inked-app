@@ -117,7 +117,7 @@ function InitiationScreen({
           a manuscript title: weighty, literary, personal. */}
       <h1
         className="font-serif italic text-text-emphasis leading-[1.05] max-w-2xl"
-        style={{ fontSize: 'clamp(40px, 6.5vw, 88px)' }}
+        style={{ fontSize: 'clamp(32px, 4.5vw, 56px)' }}
       >
         {taskTitle}
       </h1>
@@ -288,7 +288,7 @@ function PausedScreen({ elapsedSeconds, goalTitle, onResume }: PausedProps) {
           This is an editorial pause, not a system halt. */}
       <h1
         className="font-serif italic text-text-emphasis leading-none select-none"
-        style={{ fontSize: 'clamp(72px, 12vw, 128px)' }}
+        style={{ fontSize: 'clamp(48px, 7vw, 72px)' }}
       >
         Paused.
       </h1>
@@ -368,7 +368,7 @@ function ConcludedScreen({
           This is a closing statement, not a feeling. */}
       <h1
         className="font-serif text-text-emphasis leading-none select-none"
-        style={{ fontSize: 'clamp(72px, 10vw, 112px)' }}
+        style={{ fontSize: 'clamp(48px, 6vw, 64px)' }}
       >
         Done.
       </h1>
@@ -381,18 +381,18 @@ function ConcludedScreen({
         <div className="flex items-baseline gap-1.5">
           <span
             className="font-display font-light text-text-emphasis tabular-nums leading-none"
-            style={{ fontSize: 52 }}
+            style={{ fontSize: 36 }}
           >
             {String(elapsedMins).padStart(2, '0')}
           </span>
-          <span className="font-display font-light text-text-muted" style={{ fontSize: 18 }}>m</span>
+          <span className="font-display font-light text-text-muted" style={{ fontSize: 14 }}>m</span>
           <span
             className="font-display font-light text-text-emphasis tabular-nums leading-none"
-            style={{ fontSize: 52 }}
+            style={{ fontSize: 36 }}
           >
             {String(elapsedSecs).padStart(2, '0')}
           </span>
-          <span className="font-display font-light text-text-muted" style={{ fontSize: 18 }}>s</span>
+          <span className="font-display font-light text-text-muted" style={{ fontSize: 14 }}>s</span>
         </div>
       </div>
 

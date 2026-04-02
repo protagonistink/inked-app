@@ -1,4 +1,4 @@
-import { ipcMain, BrowserWindow, shell } from 'electron';
+import { ipcMain, BrowserWindow, shell, Notification } from 'electron';
 import { store } from './store';
 
 interface PomodoroState {
@@ -87,6 +87,15 @@ function playCue(kind: 'focus-end' | 'break-end') {
       shell.beep();
     }, delay);
   });
+
+  // Native notification so the user knows even when the app isn't visible
+  const title = kind === 'focus-end' ? 'Focus session complete' : 'Break over';
+  const body = kind === 'focus-end'
+    ? `Time for a break. ${state.currentTaskTitle || ''}`
+    : 'Ready for the next session.';
+
+  const notification = new Notification({ title, body, silent: true });
+  notification.show();
 }
 
 export function startLastUsedPomodoro(): LastPomodoroTask | null {

@@ -155,7 +155,7 @@ function createFocusTimerWindow() {
 
   focusTimerWindow = new BrowserWindow({
     width: 280,
-    height: 72,
+    height: 88,
     x: sw - 300,
     y: 20,
     frame: false,

@@ -224,6 +224,36 @@
   justify-content: flex-end;
 }
 
+.ui-section-label {
+  font-size: 0.625rem;
+  line-height: 1;
+  font-weight: 500;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--color-text-muted);
+}
+
+.ui-meta-label {
+  font-size: 0.625rem;
+  line-height: 1;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--color-text-whisper);
+}
+
+.ui-metric {
+  font-size: 1.125rem;
+  line-height: 1;
+  letter-spacing: -0.03em;
+  font-weight: 500;
+  color: var(--color-text-emphasis);
+}
+
+.ui-panel-divider {
+  height: 1px;
+  background: var(--color-border-subtle);
+}
+
 /* ============================================================
    Window Drag Region (macOS titleBarStyle: hiddenInset)
    ============================================================ */

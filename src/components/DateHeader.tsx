@@ -58,11 +58,12 @@ export function DateHeader() {
   };
 
   return (
-    <div className="relative flex items-center justify-center w-full py-5 select-none overflow-hidden">
+    <div className="relative flex items-center justify-center w-full border-b border-border-subtle px-6 py-4 select-none overflow-hidden">
       {/* Left chevron */}
       <button
         onClick={goBack}
-        className="p-2 text-text-secondary/30 hover:text-text-secondary transition-colors select-none z-10"
+        className="z-10 rounded-md p-2 text-text-secondary/30 transition-colors hover:bg-surface hover:text-text-secondary select-none"
+        aria-label="Previous day"
       >
         <ChevronLeft className="h-5 w-5" />
       </button>
@@ -81,12 +82,12 @@ export function DateHeader() {
           {/* Yesterday */}
           <button
             onClick={goBack}
-            className="flex flex-col items-center opacity-30 hover:opacity-50 transition-opacity min-w-[80px] select-none"
+            className="flex min-w-[84px] flex-col items-center rounded-md px-2 py-1 opacity-35 transition-opacity hover:bg-surface hover:opacity-60 select-none"
           >
-            <span className="text-[9px] uppercase tracking-[0.2em] text-text-muted font-sans">
+            <span className="ui-meta-label font-sans">
               {formatEditorialWeekday(yesterday)}
             </span>
-            <span className="text-3xl font-serif font-light text-text-secondary tracking-tight mt-1">
+            <span className="mt-1 text-[24px] font-medium tracking-[-0.03em] text-text-secondary">
               {format(yesterday, 'd')}
             </span>
           </button>
@@ -94,12 +95,12 @@ export function DateHeader() {
           {/* Today (hero) */}
           <button
             onClick={goToToday}
-            className="flex flex-col items-center px-12 mx-5 select-none"
+            className="mx-4 flex flex-col items-center rounded-md px-8 py-1 select-none"
           >
-            <span className="text-[64px] font-serif font-light text-text-emphasis tracking-[-0.02em] leading-none">
+            <span className="text-[30px] font-medium text-text-emphasis tracking-[-0.04em] leading-none">
               {format(viewDate, 'EEEE')}
             </span>
-            <span className="mt-1 text-[13px] uppercase tracking-[0.18em] text-accent-warm/85 font-sans">
+            <span className="mt-1 text-[11px] font-medium uppercase tracking-[0.14em] text-accent-warm/85 font-sans">
               {format(viewDate, 'MMM d')}
             </span>
           </button>
@@ -107,12 +108,12 @@ export function DateHeader() {
           {/* Tomorrow */}
           <button
             onClick={goForward}
-            className="flex flex-col items-center opacity-30 hover:opacity-50 transition-opacity min-w-[80px] select-none"
+            className="flex min-w-[84px] flex-col items-center rounded-md px-2 py-1 opacity-35 transition-opacity hover:bg-surface hover:opacity-60 select-none"
           >
-            <span className="text-[9px] uppercase tracking-[0.2em] text-text-muted font-sans">
+            <span className="ui-meta-label font-sans">
               {formatEditorialWeekday(tomorrow)}
             </span>
-            <span className="text-3xl font-serif font-light text-text-secondary tracking-tight mt-1">
+            <span className="mt-1 text-[24px] font-medium tracking-[-0.03em] text-text-secondary">
               {format(tomorrow, 'd')}
             </span>
           </button>
@@ -122,7 +123,8 @@ export function DateHeader() {
       {/* Right chevron */}
       <button
         onClick={goForward}
-        className="p-2 text-text-secondary/30 hover:text-text-secondary transition-colors select-none z-10"
+        className="z-10 rounded-md p-2 text-text-secondary/30 transition-colors hover:bg-surface hover:text-text-secondary select-none"
+        aria-label="Next day"
       >
         <ChevronRight className="h-5 w-5" />
       </button>

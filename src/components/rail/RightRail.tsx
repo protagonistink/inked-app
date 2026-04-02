@@ -137,9 +137,9 @@ export function RightRail({ onOpenInk: _onOpenInk, onEndDay }: RightRailProps) {
 
   return (
     <aside className="gravity-dim w-[280px] flex-shrink-0 flex flex-col border-l border-border-subtle bg-bg-elevated overflow-y-auto select-none">
-      <div className="px-7 pt-[74px] pb-6 flex flex-col">
+      <div className="flex flex-col px-5 pt-[74px] pb-6">
         <div>
-          <h3 className="flex items-center gap-2 font-serif text-[13px] uppercase tracking-[0.18em] text-text-whisper mb-4">
+          <h3 className="ui-section-label mb-4 flex items-center gap-2">
             <TrendingUp size={12} strokeWidth={1.5} />
             The Ledger
           </h3>
@@ -150,23 +150,23 @@ export function RightRail({ onOpenInk: _onOpenInk, onEndDay }: RightRailProps) {
           )}
         </div>
 
-        <div className="h-px bg-border-subtle my-6" />
+        <div className="ui-panel-divider my-4" />
 
-        {/* Focus capacity — editorial italic statement */}
         <FocusCapacity
           hoursRemaining={focusCapacity.hoursRemaining}
           scheduledHours={focusCapacity.scheduledHours}
           totalHours={focusCapacity.totalHours}
           occupancyRatio={focusCapacity.occupancyRatio}
           label={focusCapacity.label}
+          pastWorkday={isAfterWorkday}
         />
 
         {/* Intentions */}
         {intentions.length > 0 && (
           <>
-            <div className="h-px bg-border-subtle my-6" />
+            <div className="ui-panel-divider my-4" />
             <div>
-              <h3 className="flex items-center gap-2 font-serif text-[13px] uppercase tracking-[0.18em] text-text-whisper mb-4">
+              <h3 className="ui-section-label mb-4 flex items-center gap-2">
                 <Target size={12} strokeWidth={1.5} />
                 Intentions
               </h3>
@@ -178,17 +178,16 @@ export function RightRail({ onOpenInk: _onOpenInk, onEndDay }: RightRailProps) {
         {/* Balance awareness nudge */}
         {balanceAwareness.message && (
           <>
-            <div className="h-px bg-border-subtle my-6" />
+            <div className="ui-panel-divider my-6" />
             <BalanceAwareness message={balanceAwareness.message} />
           </>
         )}
 
-        {/* Hard deadlines */}
         {deadlines.length > 0 && (
           <>
-            <div className="h-px bg-border-subtle my-6" />
+            <div className="ui-panel-divider my-6" />
             <div>
-              <h3 className="font-serif text-[13px] uppercase tracking-[0.18em] text-text-whisper mb-4">Deadlines</h3>
+              <h3 className="ui-section-label mb-4">Deadlines</h3>
               <HardDeadlines deadlines={deadlines} referenceDate={referenceDate} />
             </div>
           </>
@@ -196,11 +195,9 @@ export function RightRail({ onOpenInk: _onOpenInk, onEndDay }: RightRailProps) {
 
       </div>
 
-      {/* Spacer pushes footer to bottom */}
       <div className="flex-1 min-h-8" />
 
-      {/* Footer */}
-      <div className="px-7 pb-8 flex flex-col gap-3">
+      <div className="px-5 pb-8 flex flex-col gap-3">
         <EndOfDayNudge visible={isAfterWorkday} onClick={onEndDay} />
       </div>
     </aside>
